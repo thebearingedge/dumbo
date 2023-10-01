@@ -14,6 +14,9 @@ down:
 test:
 	DATABASE_URL=$(DATABASE_URL) go test -v ./...
 
+tdd:
+	DATABASE_URL=$(DATABASE_URL) gow -c test ./...
+
 cover:
 	DATABASE_URL=$(DATABASE_URL) go test -v ./... -coverprofile .coverage/dumbo.out
 	go tool cover -html=.coverage/dumbo.out -o .coverage/dumbo.html
