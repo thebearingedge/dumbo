@@ -19,45 +19,65 @@ type DB interface {
 
 type Record map[string]any
 
-func InsertOne(t *testing.T, db DB, table string, record Record) Record {
+func InsertMany(t *testing.T, db DB, table string, records []Record) []Record {
 
 	_, err := db.Exec(fmt.Sprintf(`truncate table %q restart identity`, table))
-	require.NoError(t, err)
+	require.NoError(t, err, fmt.Sprintf("truncating table %q", table))
 
-	columns := make([]string, 0, len(record))
-	params := make([]string, 0, len(record))
-	values := make([]any, 0, len(record))
-	for column := range record {
+	first := records[0]
+
+	columns := make([]string, 0, len(first))
+	for column := range first {
 		columns = append(columns, fmt.Sprintf("%q", column))
-		params = append(params, fmt.Sprintf("$%v", len(columns)))
-		values = append(values, record[column])
+	}
+
+	params := make([]string, 0, len(records))
+	values := make([]any, 0, len(records))
+	p := 1
+
+	for _, record := range records {
+		tuple := make([]string, 0, len(first))
+		for column := range first {
+			values = append(values, record[column])
+			tuple = append(tuple, fmt.Sprintf("$%v", p))
+			p++
+		}
+		params = append(params, fmt.Sprintf("(%v)", strings.Join(tuple, ",")))
 	}
 
 	rows, err := db.Query(fmt.Sprintf(`
 		insert into %v (%v)
-		values (%v)
+		values %v
 		returning *
 	`, fmt.Sprintf("%q", table), strings.Join(columns, ", "), strings.Join(params, ", ")), values...)
-	require.NoError(t, err)
+	require.NoError(t, err, fmt.Sprintf("inserting row(s) into table %q", table))
 
-	returnedColumns, err := rows.Columns()
-	require.NoError(t, err)
+	returned, err := rows.Columns()
+	require.NoError(t, err, fmt.Errorf("reading columns returned from table %q", table))
 
-	rows.Next()
-	require.NoError(t, rows.Err())
+	inserted := make([]Record, 0, len(records))
 
-	returnedValues := make([]any, len(returnedColumns))
-	for i := range returnedValues {
-		returnedValues[i] = &returnedValues[i]
+	for rows.Next() {
+		fields := make([]any, len(returned))
+		for i := range fields {
+			fields[i] = &fields[i]
+		}
+
+		require.NoError(t, rows.Scan(fields...), fmt.Sprintf("scanning row returned from %q", table))
+
+		record := make(Record, len(returned))
+		for i, column := range returned {
+			record[column] = fields[i]
+		}
+
+		inserted = append(inserted, record)
 	}
 
-	err = rows.Scan(returnedValues...)
-	require.NoError(t, err)
-
-	inserted := make(Record, len(returnedColumns))
-	for i, column := range returnedColumns {
-		inserted[column] = returnedValues[i]
-	}
+	require.NoError(t, rows.Err(), fmt.Sprintf("iterating rows returned from table %q", table))
 
 	return inserted
+}
+
+func InsertOne(t *testing.T, db DB, table string, record Record) Record {
+	return InsertMany(t, db, table, []Record{record})[0]
 }
