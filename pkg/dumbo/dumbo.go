@@ -12,17 +12,14 @@ import (
 )
 
 type DB interface {
+	Exec(string, ...any) (sql.Result, error)
 	Query(string, ...any) (*sql.Rows, error)
 	QueryRow(string, ...any) *sql.Row
-	Exec(string, ...any) (sql.Result, error)
 }
 
 type Record map[string]any
 
-func InsertMany(t *testing.T, db DB, table string, records []Record) []Record {
-
-	_, err := db.Exec(fmt.Sprintf(`truncate table %q restart identity`, table))
-	require.NoError(t, err, fmt.Sprintf("truncating table %q", table))
+func insertMany(t *testing.T, db DB, table string, records []Record) []Record {
 
 	first := records[0]
 
@@ -78,6 +75,45 @@ func InsertMany(t *testing.T, db DB, table string, records []Record) []Record {
 	return inserted
 }
 
-func InsertOne(t *testing.T, db DB, table string, record Record) Record {
-	return InsertMany(t, db, table, []Record{record})[0]
+func seedMany(t *testing.T, db DB, table string, records []Record) []Record {
+
+	_, err := db.Exec(fmt.Sprintf(`truncate table %q restart identity cascade`, table))
+	require.NoError(t, err, fmt.Sprintf("truncating table %q", table))
+
+	return insertMany(t, db, table, records)
+}
+
+func insertOne(t *testing.T, db DB, table string, record Record) Record {
+	return insertMany(t, db, table, []Record{record})[0]
+}
+
+func seedOne(t *testing.T, db DB, table string, record Record) Record {
+	return seedMany(t, db, table, []Record{record})[0]
+}
+
+type Seeder struct {
+}
+
+func NewSeeder() Seeder {
+	return Seeder{}
+}
+
+// Truncate the target table before inserting the record.
+func (s *Seeder) SeedOne(t *testing.T, db DB, table string, record Record) Record {
+	return seedOne(t, db, table, record)
+}
+
+// Truncate the target table before inserting the records.
+func (s *Seeder) SeedMany(t *testing.T, db DB, table string, records []Record) []Record {
+	return seedMany(t, db, table, records)
+}
+
+// Add a record to the target table.
+func (s *Seeder) InsertOne(t *testing.T, db DB, table string, record Record) Record {
+	return insertOne(t, db, table, record)
+}
+
+// Add records to the target table.
+func (s *Seeder) InsertMany(t *testing.T, db DB, table string, records []Record) []Record {
+	return insertMany(t, db, table, records)
 }
