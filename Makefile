@@ -5,11 +5,16 @@ MAKEFLAGS += --no-print-directory
 
 DATABASE_URL := "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable"
 
+.PHONY: up down admin tdd test cover
+
 up:
-	docker compose up --build --detach
+	docker compose run migrate up
 
 down:
-	docker compose down --volumes --remove-orphans
+	docker compose run migrate down
+
+admin:
+	docker compose up --detach admin
 
 tdd:
 	DATABASE_URL=$(DATABASE_URL) gow -c test ./...
