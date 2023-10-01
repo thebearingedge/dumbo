@@ -39,7 +39,7 @@ func insertMany(t *testing.T, db DB, table string, records []Record) []Record {
 			tuple = append(tuple, fmt.Sprintf("$%v", p))
 			p++
 		}
-		params = append(params, fmt.Sprintf("(%v)", strings.Join(tuple, ",")))
+		params = append(params, fmt.Sprintf("(%v)", strings.Join(tuple, ", ")))
 	}
 
 	rows, err := db.Query(fmt.Sprintf(`
@@ -50,7 +50,7 @@ func insertMany(t *testing.T, db DB, table string, records []Record) []Record {
 	require.NoError(t, err, fmt.Sprintf("inserting row(s) into table %q", table))
 
 	returned, err := rows.Columns()
-	require.NoError(t, err, fmt.Errorf("reading columns returned from table %q", table))
+	require.NoError(t, err, fmt.Sprintf("reading columns returned from table %q", table))
 
 	inserted := make([]Record, 0, len(records))
 
