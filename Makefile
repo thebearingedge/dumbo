@@ -11,12 +11,12 @@ up:
 down:
 	docker compose down --volumes --remove-orphans
 
-test:
-	DATABASE_URL=$(DATABASE_URL) go test -v ./...
-
 tdd:
 	DATABASE_URL=$(DATABASE_URL) gow -c test ./...
 
+test:
+	DATABASE_URL=$(DATABASE_URL) go test -count=1 -v ./...
+
 cover:
-	DATABASE_URL=$(DATABASE_URL) go test -v ./... -coverprofile .coverage/dumbo.out
+	DATABASE_URL=$(DATABASE_URL) go test -count=1 -v ./... -coverprofile .coverage/dumbo.out
 	go tool cover -html=.coverage/dumbo.out -o .coverage/dumbo.html
