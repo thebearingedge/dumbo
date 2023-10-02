@@ -83,37 +83,56 @@ func seedMany(t *testing.T, db DB, table string, records []Record) []Record {
 	return insertMany(t, db, table, records)
 }
 
-func insertOne(t *testing.T, db DB, table string, record Record) Record {
-	return insertMany(t, db, table, []Record{record})[0]
-}
-
-func seedOne(t *testing.T, db DB, table string, record Record) Record {
-	return seedMany(t, db, table, []Record{record})[0]
-}
-
 type Seeder struct {
+	factories map[string]func() Record
 }
 
-func NewSeeder() Seeder {
-	return Seeder{}
+func NewSeeder(factories ...Factory) Seeder {
+	factoryMap := make(map[string]func() Record, len(factories))
+	for _, factory := range factories {
+		factoryMap[factory.Table] = factory.NewRecord
+	}
+
+	return Seeder{
+		factories: factoryMap,
+	}
 }
 
 // Truncate the target table before inserting the record.
-func (s *Seeder) SeedOne(t *testing.T, db DB, table string, record Record) Record {
-	return seedOne(t, db, table, record)
+func (s *Seeder) SeedOne(t *testing.T, db DB, table string, partial Record) Record {
+	return s.SeedMany(t, db, table, []Record{partial})[0]
 }
 
 // Truncate the target table before inserting the records.
-func (s *Seeder) SeedMany(t *testing.T, db DB, table string, records []Record) []Record {
+func (s *Seeder) SeedMany(t *testing.T, db DB, table string, partials []Record) []Record {
+	factory, ok := s.factories[table]
+	if !ok {
+		t.Fatal(fmt.Errorf("unknown table %q", table))
+	}
+
+	records := make([]Record, 0, len(partials))
+	for _, partial := range partials {
+		record := factory()
+		for column, value := range partial {
+			record[column] = value
+		}
+		records = append(records, record)
+	}
+
 	return seedMany(t, db, table, records)
 }
 
 // Add a record to the target table.
-func (s *Seeder) InsertOne(t *testing.T, db DB, table string, record Record) Record {
-	return insertOne(t, db, table, record)
+func (s *Seeder) InsertOne(t *testing.T, db DB, table string, partial Record) Record {
+	return s.InsertMany(t, db, table, []Record{partial})[0]
 }
 
 // Add records to the target table.
-func (s *Seeder) InsertMany(t *testing.T, db DB, table string, records []Record) []Record {
-	return insertMany(t, db, table, records)
+func (s *Seeder) InsertMany(t *testing.T, db DB, table string, partials []Record) []Record {
+	return insertMany(t, db, table, partials)
+}
+
+type Factory struct {
+	Table     string
+	NewRecord func() Record
 }

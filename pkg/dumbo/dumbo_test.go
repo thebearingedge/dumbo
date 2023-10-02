@@ -3,6 +3,7 @@ package dumbo
 import (
 	"testing"
 
+	"github.com/go-faker/faker/v4"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/thebearingedge/dumbo/internal/dumbotest"
@@ -11,7 +12,14 @@ import (
 func TestCreatingRecords(t *testing.T) {
 	db := dumbotest.RequireDB(t)
 
-	seeder := NewSeeder()
+	seeder := NewSeeder(
+		Factory{
+			Table: "user",
+			NewRecord: func() Record {
+				return Record{}
+			},
+		},
+	)
 
 	t.Run("seeding a single record", func(t *testing.T) {
 		tx := dumbotest.RequireBegin(t, db)
@@ -71,5 +79,48 @@ func TestCreatingRecords(t *testing.T) {
 
 		assert.Equal(t, int64(3), ocaml["id"])
 		assert.Equal(t, "ocaml", ocaml["username"])
+	})
+}
+
+func TestGeneratingRecordFields(t *testing.T) {
+	db := dumbotest.RequireDB(t)
+
+	seeder := NewSeeder(
+		Factory{
+			Table: "user",
+			NewRecord: func() Record {
+				return Record{
+					"username": faker.Username(),
+				}
+			},
+		},
+	)
+
+	t.Run("generating one record", func(t *testing.T) {
+		tx := dumbotest.RequireBegin(t, db)
+
+		random := seeder.SeedOne(t, tx, "user", Record{})
+
+		assert.Equal(t, int64(1), random["id"])
+		assert.NotEmpty(t, random["username"])
+	})
+
+	t.Run("generating multiple records", func(t *testing.T) {
+		tx := dumbotest.RequireBegin(t, db)
+
+		randoms := seeder.SeedMany(t, tx, "user", []Record{
+			{},
+			{},
+			{},
+		})
+
+		r1, r2, r3 := randoms[0], randoms[1], randoms[2]
+
+		assert.Equal(t, int64(1), r1["id"])
+		assert.NotEmpty(t, r1["username"])
+		assert.Equal(t, int64(2), r2["id"])
+		assert.NotEmpty(t, r2["username"])
+		assert.Equal(t, int64(3), r3["id"])
+		assert.NotEmpty(t, r3["username"])
 	})
 }
