@@ -107,9 +107,9 @@ func (s *Seeder) SeedOne(t *testing.T, db DB, table string, partial Record) Reco
 
 // Truncate the target table before inserting the records.
 func (s *Seeder) SeedMany(t *testing.T, db DB, table string, partials []Record) []Record {
-	factory, ok := s.factories[table]
-	if !ok {
-		t.Fatal(fmt.Errorf("unknown table %q", table))
+	factory, hasFactory := s.factories[table]
+	if !hasFactory {
+		return seedMany(t, db, table, partials)
 	}
 
 	records := make([]Record, 0, len(partials))

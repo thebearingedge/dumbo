@@ -12,14 +12,7 @@ import (
 func TestCreatingRecords(t *testing.T) {
 	db := dumbotest.RequireDB(t)
 
-	seeder := NewSeeder(
-		Factory{
-			Table: "user",
-			NewRecord: func() Record {
-				return Record{}
-			},
-		},
-	)
+	seeder := NewSeeder()
 
 	t.Run("seeding a single record", func(t *testing.T) {
 		tx := dumbotest.RequireBegin(t, db)
@@ -122,5 +115,14 @@ func TestGeneratingRecordFields(t *testing.T) {
 		assert.NotEmpty(t, r2["username"])
 		assert.Equal(t, int64(3), r3["id"])
 		assert.NotEmpty(t, r3["username"])
+	})
+
+	t.Run("overriding generated fields", func(t *testing.T) {
+		tx := dumbotest.RequireBegin(t, db)
+
+		gopher := seeder.SeedOne(t, tx, "user", Record{"username": "gopher"})
+
+		assert.Equal(t, int64(1), gopher["id"])
+		assert.Equal(t, "gopher", gopher["username"])
 	})
 }
