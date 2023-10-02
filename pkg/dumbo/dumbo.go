@@ -18,7 +18,61 @@ type DB interface {
 
 type Record map[string]any
 
-func insertMany(t *testing.T, db DB, table string, records []Record) []Record {
+type Indexer func(r Record) string
+
+type Factory struct {
+	Table     string
+	NewRecord func() Record
+	UniqueBy  []Indexer
+}
+
+type Seeder struct {
+	factories map[string]Factory
+}
+
+func NewSeeder(factories ...Factory) Seeder {
+	seeder := Seeder{
+		factories: make(map[string]Factory, len(factories)),
+	}
+
+	for _, factory := range factories {
+		seeder.factories[factory.Table] = factory
+	}
+
+	return seeder
+}
+
+// Truncate the target table before inserting the record.
+func (s *Seeder) SeedOne(t *testing.T, db DB, table string, partial Record) Record {
+	return s.SeedMany(t, db, table, []Record{partial})[0]
+}
+
+// Truncate the target table before inserting the records.
+func (s *Seeder) SeedMany(t *testing.T, db DB, table string, partials []Record) []Record {
+	factory, hasFactory := s.factories[table]
+	if !hasFactory {
+		return seed(t, db, table, partials)
+	}
+
+	return seed(t, db, table, generate(table, factory, partials))
+}
+
+// Add a record to the target table.
+func (s *Seeder) InsertOne(t *testing.T, db DB, table string, partial Record) Record {
+	return s.InsertMany(t, db, table, []Record{partial})[0]
+}
+
+// Add records to the target table.
+func (s *Seeder) InsertMany(t *testing.T, db DB, table string, partials []Record) []Record {
+	factory, hasFactory := s.factories[table]
+	if !hasFactory {
+		return insert(t, db, table, partials)
+	}
+
+	return insert(t, db, table, generate(table, factory, partials))
+}
+
+func insert(t *testing.T, db DB, table string, records []Record) []Record {
 	first := records[0]
 
 	columns := make([]string, 0, len(first))
@@ -73,63 +127,52 @@ func insertMany(t *testing.T, db DB, table string, records []Record) []Record {
 	return inserted
 }
 
-func seedMany(t *testing.T, db DB, table string, records []Record) []Record {
+func seed(t *testing.T, db DB, table string, records []Record) []Record {
 	_, err := db.Exec(fmt.Sprintf(`truncate table %q restart identity cascade`, table))
 	require.NoError(t, err, fmt.Sprintf("truncating table %q", table))
 
-	return insertMany(t, db, table, records)
+	return insert(t, db, table, records)
 }
 
-type Factory struct {
-	Table     string
-	NewRecord func() Record
-}
+func generate(table string, factory Factory, partials []Record) []Record {
 
-type Seeder struct {
-	factories map[string]func() Record
-}
-
-func NewSeeder(factories ...Factory) Seeder {
-	factoryMap := make(map[string]func() Record, len(factories))
-	for _, factory := range factories {
-		factoryMap[factory.Table] = factory.NewRecord
-	}
-
-	return Seeder{
-		factories: factoryMap,
-	}
-}
-
-// Truncate the target table before inserting the record.
-func (s *Seeder) SeedOne(t *testing.T, db DB, table string, partial Record) Record {
-	return s.SeedMany(t, db, table, []Record{partial})[0]
-}
-
-// Truncate the target table before inserting the records.
-func (s *Seeder) SeedMany(t *testing.T, db DB, table string, partials []Record) []Record {
-	factory, hasFactory := s.factories[table]
-	if !hasFactory {
-		return seedMany(t, db, table, partials)
+	indexes := make([]map[string]interface{}, len(factory.UniqueBy))
+	for i := range indexes {
+		indexes[i] = make(map[string]interface{})
 	}
 
 	records := make([]Record, 0, len(partials))
+
+EACH_PARTIAL:
 	for _, partial := range partials {
-		record := factory()
-		for column, value := range partial {
-			record[column] = value
+		retries := 5
+
+	EACH_RECORD:
+		for {
+			if retries < 1 {
+				panic(fmt.Errorf("maximum %v retries exceeded generating record for table %q", 5, table))
+			}
+
+			record := factory.NewRecord()
+			for column, value := range partial {
+				record[column] = value
+			}
+
+			for i, uniqueBy := range factory.UniqueBy {
+				key := uniqueBy(record)
+				if _, exists := indexes[i][key]; exists {
+					retries--
+					continue EACH_RECORD
+				} else {
+					indexes[i][key] = struct{}{}
+				}
+			}
+
+			records = append(records, record)
+
+			continue EACH_PARTIAL
 		}
-		records = append(records, record)
 	}
 
-	return seedMany(t, db, table, records)
-}
-
-// Add a record to the target table.
-func (s *Seeder) InsertOne(t *testing.T, db DB, table string, partial Record) Record {
-	return s.InsertMany(t, db, table, []Record{partial})[0]
-}
-
-// Add records to the target table.
-func (s *Seeder) InsertMany(t *testing.T, db DB, table string, partials []Record) []Record {
-	return insertMany(t, db, table, partials)
+	return records
 }

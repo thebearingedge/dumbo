@@ -1,6 +1,7 @@
 package dumbo
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/go-faker/faker/v4"
@@ -124,5 +125,47 @@ func TestGeneratingRecordFields(t *testing.T) {
 
 		assert.Equal(t, int64(1), gopher["id"])
 		assert.Equal(t, "gopher", gopher["username"])
+	})
+}
+
+func TestGeneratingUniqueRecords(t *testing.T) {
+	db := dumbotest.RequireDB(t)
+
+	seeder := NewSeeder(
+		Factory{
+			Table: "user",
+			NewRecord: func() Record {
+				return Record{
+					"username": faker.Username(),
+				}
+			},
+			UniqueBy: []Indexer{
+				func(r Record) string {
+					return fmt.Sprint(r["username"])
+				},
+			},
+		},
+	)
+
+	t.Run("enforces unique seeds", func(t *testing.T) {
+		tx := dumbotest.RequireBegin(t, db)
+
+		assert.PanicsWithError(t, `maximum 5 retries exceeded generating record for table "user"`, func() {
+			seeder.SeedMany(t, tx, "user", []Record{
+				{"username": "gopher"},
+				{"username": "gopher"},
+			})
+		})
+	})
+
+	t.Run("enforces unique inserts", func(t *testing.T) {
+		tx := dumbotest.RequireBegin(t, db)
+
+		assert.PanicsWithError(t, `maximum 5 retries exceeded generating record for table "user"`, func() {
+			seeder.InsertMany(t, tx, "user", []Record{
+				{"username": "gopher"},
+				{"username": "gopher"},
+			})
+		})
 	})
 }
