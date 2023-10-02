@@ -2,6 +2,7 @@ package dumbotest
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"testing"
 
@@ -30,6 +31,17 @@ func RequireBegin(t *testing.T, db *sql.DB) *sql.Tx {
 			return
 		}
 		if err := tx.Rollback(); err != nil {
+			panic(err)
+		}
+	})
+	require.NoError(t, err)
+	return tx
+}
+
+func RequireSavepoint(t *testing.T, tx *sql.Tx) *sql.Tx {
+	_, err := tx.Exec(fmt.Sprintf("savepoint %q", t.Name()))
+	t.Cleanup(func() {
+		if _, err := tx.Exec(fmt.Sprintf("rollback to savepoint %q", t.Name())); err != nil {
 			panic(err)
 		}
 	})

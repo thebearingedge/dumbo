@@ -30,23 +30,27 @@ type Index map[string]any
 
 type Seeder struct {
 	factories map[string]Factory
-	indexes   map[string][]Index
+	runs      []map[string][]Index
 }
 
-func NewSeeder(factories ...Factory) Seeder {
+func New(factories ...Factory) Seeder {
 	seeder := Seeder{
 		factories: make(map[string]Factory, len(factories)),
-		indexes:   make(map[string][]Index),
+		runs:      make([]map[string][]Index, 0, 1),
 	}
 
+	run := make(map[string][]Index)
+
 	for _, factory := range factories {
-		index := make([]Index, len(factory.UniqueBy))
+		indexes := make([]Index, len(factory.UniqueBy))
 		for i := range factory.UniqueBy {
-			index[i] = make(Index)
+			indexes[i] = make(Index)
 		}
-		seeder.indexes[factory.Table] = index
+		run[factory.Table] = indexes
 		seeder.factories[factory.Table] = factory
 	}
+
+	seeder.runs = append(seeder.runs, run)
 
 	return seeder
 }
@@ -63,7 +67,7 @@ func (s *Seeder) SeedMany(t *testing.T, db DB, table string, partials []Record) 
 		return seed(t, db, table, partials)
 	}
 
-	return seed(t, db, table, generate(s.indexes[table], factory, partials))
+	return seed(t, db, table, generate(s.runs, factory, partials))
 }
 
 // Add a record to the target table.
@@ -78,7 +82,23 @@ func (s *Seeder) InsertMany(t *testing.T, db DB, table string, partials []Record
 		return insert(t, db, table, partials)
 	}
 
-	return insert(t, db, table, generate(s.indexes[table], factory, partials))
+	run := s.runs[len(s.runs)-1]
+	_, hasIndexes := run[table]
+	if !hasIndexes {
+		run[table] = make([]Index, len(factory.UniqueBy))
+		for i := range factory.UniqueBy {
+			run[table][i] = make(Index)
+		}
+	}
+
+	return insert(t, db, table, generate(s.runs, factory, partials))
+}
+
+// Remove unique indexes from sub-test when done.
+func (s *Seeder) Run(t *testing.T, f func(s *Seeder)) {
+	s.runs = append(s.runs, make(map[string][]Index))
+	t.Cleanup(func() { s.runs = s.runs[:len(s.runs)-1] })
+	f(s)
 }
 
 func insert(t *testing.T, db DB, table string, records []Record) []Record {
@@ -143,13 +163,13 @@ func seed(t *testing.T, db DB, table string, records []Record) []Record {
 	return insert(t, db, table, records)
 }
 
-func generate(indexes []Index, factory Factory, partials []Record) []Record {
+func generate(runs []map[string][]Index, factory Factory, partials []Record) []Record {
 
 	records := make([]Record, 0, len(partials))
 
 EACH_PARTIAL:
 	for _, partial := range partials {
-		retries := 5 // todo: parameterize this?
+		retries := 5 // todo: parameterize this? NewWithConfig(config, ...factory)
 
 	EACH_RECORD:
 		for {
@@ -162,13 +182,19 @@ EACH_PARTIAL:
 				record[column] = value
 			}
 
-			for i, uniqueBy := range factory.UniqueBy {
-				key := uniqueBy(record)
-				if _, exists := indexes[i][key]; exists {
-					retries--
-					continue EACH_RECORD
-				} else {
-					indexes[i][key] = struct{}{}
+			for i, run := range runs {
+				indexes := run[factory.Table]
+				for j, uniqueBy := range factory.UniqueBy {
+
+					key := uniqueBy(record)
+					if _, exists := indexes[j][key]; exists {
+						retries--
+						continue EACH_RECORD
+					} else {
+						if i == len(runs)-1 {
+							indexes[j][key] = struct{}{}
+						}
+					}
 				}
 			}
 

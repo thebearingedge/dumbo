@@ -13,7 +13,7 @@ import (
 func TestCreatingRecords(t *testing.T) {
 	db := dumbotest.RequireDB(t)
 
-	seeder := NewSeeder()
+	seeder := New()
 
 	t.Run("seeding a single record", func(t *testing.T) {
 		tx := dumbotest.RequireBegin(t, db)
@@ -79,7 +79,7 @@ func TestCreatingRecords(t *testing.T) {
 func TestGeneratingRecordFields(t *testing.T) {
 	db := dumbotest.RequireDB(t)
 
-	seeder := NewSeeder(
+	seeder := New(
 		Factory{
 			Table: "user",
 			NewRecord: func() Record {
@@ -131,7 +131,7 @@ func TestGeneratingRecordFields(t *testing.T) {
 func TestGeneratingUniqueRecords(t *testing.T) {
 	db := dumbotest.RequireDB(t)
 
-	seeder := NewSeeder(
+	seeder := New(
 		Factory{
 			Table: "user",
 			NewRecord: func() Record {
@@ -165,6 +165,58 @@ func TestGeneratingUniqueRecords(t *testing.T) {
 			seeder.InsertMany(t, tx, "user", []Record{
 				{"username": "gopher"},
 				{"username": "gopher"},
+			})
+		})
+	})
+}
+
+func TestNestedRuns(t *testing.T) {
+	db := dumbotest.RequireDB(t)
+
+	seeder := New(
+		Factory{
+			Table: "user",
+			NewRecord: func() Record {
+				return Record{
+					"username": faker.Username(),
+				}
+			},
+			UniqueBy: []Indexer{
+				func(r Record) string {
+					return fmt.Sprint(r["username"])
+				},
+			},
+		},
+	)
+
+	t.Run("shared seed", func(t *testing.T) {
+		sp := dumbotest.RequireBegin(t, db)
+
+		seeder.SeedOne(t, sp, "user", Record{"username": "gopher"})
+
+		t.Run("nested duplicate", func(t *testing.T) {
+			sp = dumbotest.RequireSavepoint(t, sp)
+
+			assert.PanicsWithError(t, `maximum 5 retries exceeded generating record for table "user"`, func() {
+				seeder.Run(t, func(s *Seeder) {
+					s.InsertMany(t, sp, "user", []Record{
+						{"username": "pythonista"},
+						{"username": "gopher"},
+					})
+				})
+			})
+		})
+
+		t.Run("nested unique", func(t *testing.T) {
+			sp = dumbotest.RequireSavepoint(t, sp)
+
+			assert.NotPanics(t, func() {
+				seeder.Run(t, func(s *Seeder) {
+					s.InsertMany(t, sp, "user", []Record{
+						{"username": "pythonista"},
+						{"username": "rustacean"},
+					})
+				})
 			})
 		})
 	})
