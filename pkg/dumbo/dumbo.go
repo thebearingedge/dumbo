@@ -26,16 +26,25 @@ type Factory struct {
 	UniqueBy  []Indexer
 }
 
+type Index map[string]any
+
 type Seeder struct {
 	factories map[string]Factory
+	indexes   map[string][]Index
 }
 
 func NewSeeder(factories ...Factory) Seeder {
 	seeder := Seeder{
 		factories: make(map[string]Factory, len(factories)),
+		indexes:   make(map[string][]Index),
 	}
 
 	for _, factory := range factories {
+		index := make([]Index, len(factory.UniqueBy))
+		for i := range factory.UniqueBy {
+			index[i] = make(Index)
+		}
+		seeder.indexes[factory.Table] = index
 		seeder.factories[factory.Table] = factory
 	}
 
@@ -54,7 +63,7 @@ func (s *Seeder) SeedMany(t *testing.T, db DB, table string, partials []Record) 
 		return seed(t, db, table, partials)
 	}
 
-	return seed(t, db, table, generate(table, factory, partials))
+	return seed(t, db, table, generate(s.indexes[table], factory, partials))
 }
 
 // Add a record to the target table.
@@ -69,7 +78,7 @@ func (s *Seeder) InsertMany(t *testing.T, db DB, table string, partials []Record
 		return insert(t, db, table, partials)
 	}
 
-	return insert(t, db, table, generate(table, factory, partials))
+	return insert(t, db, table, generate(s.indexes[table], factory, partials))
 }
 
 func insert(t *testing.T, db DB, table string, records []Record) []Record {
@@ -134,23 +143,18 @@ func seed(t *testing.T, db DB, table string, records []Record) []Record {
 	return insert(t, db, table, records)
 }
 
-func generate(table string, factory Factory, partials []Record) []Record {
-
-	indexes := make([]map[string]interface{}, len(factory.UniqueBy))
-	for i := range indexes {
-		indexes[i] = make(map[string]interface{})
-	}
+func generate(indexes []Index, factory Factory, partials []Record) []Record {
 
 	records := make([]Record, 0, len(partials))
 
 EACH_PARTIAL:
 	for _, partial := range partials {
-		retries := 5
+		retries := 5 // todo: parameterize this?
 
 	EACH_RECORD:
 		for {
 			if retries < 1 {
-				panic(fmt.Errorf("maximum %v retries exceeded generating record for table %q", 5, table))
+				panic(fmt.Errorf("maximum %v retries exceeded generating record for table %q", 5, factory.Table))
 			}
 
 			record := factory.NewRecord()
