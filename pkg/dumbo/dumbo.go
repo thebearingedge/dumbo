@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	_ "github.com/lib/pq"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,7 +19,6 @@ type DB interface {
 type Record map[string]any
 
 func insertMany(t *testing.T, db DB, table string, records []Record) []Record {
-
 	first := records[0]
 
 	columns := make([]string, 0, len(first))
@@ -76,11 +74,15 @@ func insertMany(t *testing.T, db DB, table string, records []Record) []Record {
 }
 
 func seedMany(t *testing.T, db DB, table string, records []Record) []Record {
-
 	_, err := db.Exec(fmt.Sprintf(`truncate table %q restart identity cascade`, table))
 	require.NoError(t, err, fmt.Sprintf("truncating table %q", table))
 
 	return insertMany(t, db, table, records)
+}
+
+type Factory struct {
+	Table     string
+	NewRecord func() Record
 }
 
 type Seeder struct {
@@ -130,9 +132,4 @@ func (s *Seeder) InsertOne(t *testing.T, db DB, table string, partial Record) Re
 // Add records to the target table.
 func (s *Seeder) InsertMany(t *testing.T, db DB, table string, partials []Record) []Record {
 	return insertMany(t, db, table, partials)
-}
-
-type Factory struct {
-	Table     string
-	NewRecord func() Record
 }
