@@ -198,7 +198,7 @@ func TestNestedRuns(t *testing.T) {
 			sp = dumbotest.RequireSavepoint(t, sp)
 
 			assert.PanicsWithError(t, `maximum 5 retries exceeded generating record for table "user"`, func() {
-				seeder.Run(t, func(s *Seeder) {
+				seeder.Run(t, func(s *Dumbo) {
 					s.InsertMany(t, sp, "user", []Record{
 						{"username": "pythonista"},
 						{"username": "gopher"},
@@ -211,7 +211,7 @@ func TestNestedRuns(t *testing.T) {
 			sp = dumbotest.RequireSavepoint(t, sp)
 
 			assert.NotPanics(t, func() {
-				seeder.Run(t, func(s *Seeder) {
+				seeder.Run(t, func(s *Dumbo) {
 					s.InsertMany(t, sp, "user", []Record{
 						{"username": "pythonista"},
 						{"username": "rustacean"},

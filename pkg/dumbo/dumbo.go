@@ -28,13 +28,13 @@ type Factory struct {
 
 type Index map[string]any
 
-type Seeder struct {
+type Dumbo struct {
 	factories map[string]Factory
 	runs      []map[string][]Index
 }
 
-func New(factories ...Factory) Seeder {
-	seeder := Seeder{
+func New(factories ...Factory) Dumbo {
+	seeder := Dumbo{
 		factories: make(map[string]Factory, len(factories)),
 		runs:      make([]map[string][]Index, 0, 1),
 	}
@@ -56,12 +56,12 @@ func New(factories ...Factory) Seeder {
 }
 
 // Truncate the target table before inserting the record.
-func (s *Seeder) SeedOne(t *testing.T, db DB, table string, partial Record) Record {
+func (s *Dumbo) SeedOne(t *testing.T, db DB, table string, partial Record) Record {
 	return s.SeedMany(t, db, table, []Record{partial})[0]
 }
 
 // Truncate the target table before inserting the records.
-func (s *Seeder) SeedMany(t *testing.T, db DB, table string, partials []Record) []Record {
+func (s *Dumbo) SeedMany(t *testing.T, db DB, table string, partials []Record) []Record {
 	factory, hasFactory := s.factories[table]
 	if !hasFactory {
 		return seed(t, db, table, partials)
@@ -71,12 +71,12 @@ func (s *Seeder) SeedMany(t *testing.T, db DB, table string, partials []Record) 
 }
 
 // Add a record to the target table.
-func (s *Seeder) InsertOne(t *testing.T, db DB, table string, partial Record) Record {
+func (s *Dumbo) InsertOne(t *testing.T, db DB, table string, partial Record) Record {
 	return s.InsertMany(t, db, table, []Record{partial})[0]
 }
 
 // Add records to the target table.
-func (s *Seeder) InsertMany(t *testing.T, db DB, table string, partials []Record) []Record {
+func (s *Dumbo) InsertMany(t *testing.T, db DB, table string, partials []Record) []Record {
 	factory, hasFactory := s.factories[table]
 	if !hasFactory {
 		return insert(t, db, table, partials)
@@ -95,7 +95,7 @@ func (s *Seeder) InsertMany(t *testing.T, db DB, table string, partials []Record
 }
 
 // Remove unique indexes from sub-test when done.
-func (s *Seeder) Run(t *testing.T, f func(s *Seeder)) {
+func (s *Dumbo) Run(t *testing.T, f func(s *Dumbo)) {
 	s.runs = append(s.runs, make(map[string][]Index))
 	t.Cleanup(func() { s.runs = s.runs[:len(s.runs)-1] })
 	f(s)
