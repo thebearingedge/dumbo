@@ -12,7 +12,6 @@ import (
 type DB interface {
 	Exec(string, ...any) (sql.Result, error)
 	Query(string, ...any) (*sql.Rows, error)
-	QueryRow(string, ...any) *sql.Row
 }
 
 type Record map[string]any
@@ -93,6 +92,17 @@ func (d *Dumbo) InsertMany(t *testing.T, db DB, table string, partials []Record)
 	return insert(t, db, table, generate(d.runs, factory, partials))
 }
 
+func (d Dumbo) FetchOne(t *testing.T, db DB, query string, values ...any) Record {
+	return d.FetchMany(t, db, query, values...)[0]
+}
+
+func (d Dumbo) FetchMany(t *testing.T, db DB, query string, values ...any) []Record {
+	rows, err := db.Query(query, values...)
+	require.NoError(t, err, fmt.Sprintf("running query %q", query))
+
+	return fetchAll(t, rows)
+}
+
 // Remove unique indexes from sub-test when done.
 func (d *Dumbo) Run(t *testing.T, r func(d *Dumbo)) {
 	d.runs = append(d.runs, make(map[string][]Index))
@@ -129,30 +139,7 @@ func insert(t *testing.T, db DB, table string, records []Record) []Record {
 	`, fmt.Sprintf("%q", table), strings.Join(columns, ", "), strings.Join(params, ", ")), values...)
 	require.NoError(t, err, fmt.Sprintf("inserting row(s) into table %q", table))
 
-	returned, err := rows.Columns()
-	require.NoError(t, err, fmt.Sprintf("reading columns returned from table %q", table))
-
-	inserted := make([]Record, 0, len(records))
-
-	for rows.Next() {
-		fields := make([]any, len(returned))
-		for i := range fields {
-			fields[i] = &fields[i]
-		}
-
-		require.NoError(t, rows.Scan(fields...), fmt.Sprintf("scanning row returned from %q", table))
-
-		record := make(Record, len(returned))
-		for i, column := range returned {
-			record[column] = fields[i]
-		}
-
-		inserted = append(inserted, record)
-	}
-
-	require.NoError(t, rows.Err(), fmt.Sprintf("iterating rows returned from table %q", table))
-
-	return inserted
+	return fetchAll(t, rows)
 }
 
 func seed(t *testing.T, db DB, table string, records []Record) []Record {
@@ -204,4 +191,31 @@ EACH_PARTIAL:
 	}
 
 	return records
+}
+
+func fetchAll(t *testing.T, rows *sql.Rows) []Record {
+	columns, err := rows.Columns()
+	require.NoError(t, err, "reading columns returned from query")
+
+	fetched := make([]Record, 0)
+
+	for rows.Next() {
+		fields := make([]any, len(columns))
+		for i := range fields {
+			fields[i] = &fields[i]
+		}
+
+		require.NoError(t, rows.Scan(fields...), "scanning row returned from query")
+
+		record := make(Record, len(columns))
+		for i, column := range columns {
+			record[column] = fields[i]
+		}
+
+		fetched = append(fetched, record)
+	}
+
+	require.NoError(t, rows.Err(), "iterating rows returned from query")
+
+	return fetched
 }

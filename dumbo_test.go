@@ -76,6 +76,39 @@ func TestCreatingRecords(t *testing.T) {
 	})
 }
 
+func TestFetchingRecords(t *testing.T) {
+	db := dumbotest.RequireDB(t)
+
+	seeder := New()
+
+	t.Run("fetching a single record", func(t *testing.T) {
+		tx := dumbotest.RequireBegin(t, db)
+
+		seeder.SeedOne(t, tx, "user", Record{"username": "gopher"})
+		user := seeder.FetchOne(t, tx, `select * from "user" where "username" = $1`, "gopher")
+
+		assert.Equal(t, "gopher", user["username"])
+	})
+
+	t.Run("fetching multiple records", func(t *testing.T) {
+		tx := dumbotest.RequireBegin(t, db)
+
+		seeder.SeedMany(t, tx, "user", []Record{
+			{"username": "gopher"},
+			{"username": "rustacean"},
+		})
+
+		users := seeder.FetchMany(t, tx, `select * from "user" order by "id"`)
+
+		gopher, rustacean := users[0], users[1]
+
+		assert.Equal(t, int64(1), gopher["id"])
+		assert.Equal(t, "gopher", gopher["username"])
+		assert.Equal(t, int64(2), rustacean["id"])
+		assert.Equal(t, "rustacean", rustacean["username"])
+	})
+}
+
 func TestGeneratingRecordFields(t *testing.T) {
 	db := dumbotest.RequireDB(t)
 
