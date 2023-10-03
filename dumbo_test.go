@@ -20,6 +20,7 @@ func TestCreatingRecords(t *testing.T) {
 
 		user := seeder.SeedOne(t, tx, "user", Record{"username": "gopher"})
 
+		assert.Equal(t, int64(1), user["id"])
 		assert.Equal(t, "gopher", user["username"])
 	})
 
@@ -87,6 +88,7 @@ func TestFetchingRecords(t *testing.T) {
 		seeder.SeedOne(t, tx, "user", Record{"username": "gopher"})
 		user := seeder.FetchOne(t, tx, `select * from "user" where "username" = $1`, "gopher")
 
+		assert.Equal(t, int64(1), user["id"])
 		assert.Equal(t, "gopher", user["username"])
 	})
 
