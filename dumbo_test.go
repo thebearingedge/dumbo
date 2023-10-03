@@ -163,6 +163,39 @@ func TestGeneratingRecordFields(t *testing.T) {
 	})
 }
 
+func TestRetriesConfiguration(t *testing.T) {
+	db := dumbotest.RequireDB(t)
+
+	config := Defaults()
+	config.retries = 3
+
+	seeder := NewWithConfig(
+		config,
+		Factory{
+			Table: "user",
+			NewRecord: func() Record {
+				return Record{
+					"username": faker.Username(),
+				}
+			},
+			UniqueBy: []Indexer{
+				func(r Record) string {
+					return fmt.Sprint(r["username"])
+				},
+			},
+		},
+	)
+
+	tx := dumbotest.RequireBegin(t, db)
+
+	assert.PanicsWithError(t, `maximum 3 retries exceeded generating record for table "user"`, func() {
+		seeder.SeedMany(t, tx, "user", []Record{
+			{"username": "gopher"},
+			{"username": "gopher"},
+		})
+	})
+}
+
 func TestGeneratingUniqueRecords(t *testing.T) {
 	db := dumbotest.RequireDB(t)
 

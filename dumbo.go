@@ -26,15 +26,27 @@ type Factory struct {
 
 type Index map[string]any
 
+type Config struct {
+	retries int
+}
+
+func Defaults() Config {
+	return Config{
+		retries: 5,
+	}
+}
+
 type Dumbo struct {
 	factories map[string]Factory
 	runs      []map[string][]Index
+	config    Config
 }
 
 func New(factories ...Factory) Dumbo {
-	seeder := Dumbo{
+	d := Dumbo{
 		factories: make(map[string]Factory, len(factories)),
 		runs:      make([]map[string][]Index, 0, 1),
+		config:    Defaults(),
 	}
 
 	run := make(map[string][]Index)
@@ -45,12 +57,18 @@ func New(factories ...Factory) Dumbo {
 			indexes[i] = make(Index)
 		}
 		run[factory.Table] = indexes
-		seeder.factories[factory.Table] = factory
+		d.factories[factory.Table] = factory
 	}
 
-	seeder.runs = append(seeder.runs, run)
+	d.runs = append(d.runs, run)
 
-	return seeder
+	return d
+}
+
+func NewWithConfig(config Config, factories ...Factory) Dumbo {
+	d := New(factories...)
+	d.config = config
+	return d
 }
 
 // Truncate the target table before inserting the record.
@@ -65,7 +83,7 @@ func (d *Dumbo) SeedMany(t *testing.T, db DB, table string, partials []Record) [
 		return seed(t, db, table, partials)
 	}
 
-	return seed(t, db, table, generate(d.runs, factory, partials))
+	return seed(t, db, table, generate(d.runs, d.config.retries, factory, partials))
 }
 
 // Add a record to the target table.
@@ -89,7 +107,7 @@ func (d *Dumbo) InsertMany(t *testing.T, db DB, table string, partials []Record)
 		}
 	}
 
-	return insert(t, db, table, generate(d.runs, factory, partials))
+	return insert(t, db, table, generate(d.runs, d.config.retries, factory, partials))
 }
 
 func (d Dumbo) FetchOne(t *testing.T, db DB, query string, values ...any) Record {
@@ -149,18 +167,23 @@ func seed(t *testing.T, db DB, table string, records []Record) []Record {
 	return insert(t, db, table, records)
 }
 
-func generate(runs []map[string][]Index, factory Factory, partials []Record) []Record {
+func generate(runs []map[string][]Index, retries int, factory Factory, partials []Record) []Record {
 
 	records := make([]Record, 0, len(partials))
 
 EACH_PARTIAL:
 	for _, partial := range partials {
-		retries := 5 // todo: parameterize this? NewWithConfig(config, ...factory)
+		attempts := 0
 
 	EACH_RECORD:
 		for {
-			if retries < 1 {
-				panic(fmt.Errorf("maximum %v retries exceeded generating record for table %q", 5, factory.Table))
+			if attempts > retries {
+				err := fmt.Errorf(
+					"maximum %v retries exceeded generating record for table %q",
+					retries,
+					factory.Table,
+				)
+				panic(err)
 			}
 
 			record := factory.NewRecord()
@@ -174,7 +197,7 @@ EACH_PARTIAL:
 
 					key := uniqueBy(record)
 					if _, exists := indexes[j][key]; exists {
-						retries--
+						attempts++
 						continue EACH_RECORD
 					} else {
 						if i == len(runs)-1 {
