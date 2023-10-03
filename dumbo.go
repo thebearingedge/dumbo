@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
