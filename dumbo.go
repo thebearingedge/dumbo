@@ -55,33 +55,33 @@ func New(factories ...Factory) Dumbo {
 }
 
 // Truncate the target table before inserting the record.
-func (s *Dumbo) SeedOne(t *testing.T, db DB, table string, partial Record) Record {
-	return s.SeedMany(t, db, table, []Record{partial})[0]
+func (d *Dumbo) SeedOne(t *testing.T, db DB, table string, partial Record) Record {
+	return d.SeedMany(t, db, table, []Record{partial})[0]
 }
 
 // Truncate the target table before inserting the records.
-func (s *Dumbo) SeedMany(t *testing.T, db DB, table string, partials []Record) []Record {
-	factory, hasFactory := s.factories[table]
+func (d *Dumbo) SeedMany(t *testing.T, db DB, table string, partials []Record) []Record {
+	factory, hasFactory := d.factories[table]
 	if !hasFactory {
 		return seed(t, db, table, partials)
 	}
 
-	return seed(t, db, table, generate(s.runs, factory, partials))
+	return seed(t, db, table, generate(d.runs, factory, partials))
 }
 
 // Add a record to the target table.
-func (s *Dumbo) InsertOne(t *testing.T, db DB, table string, partial Record) Record {
-	return s.InsertMany(t, db, table, []Record{partial})[0]
+func (d *Dumbo) InsertOne(t *testing.T, db DB, table string, partial Record) Record {
+	return d.InsertMany(t, db, table, []Record{partial})[0]
 }
 
 // Add records to the target table.
-func (s *Dumbo) InsertMany(t *testing.T, db DB, table string, partials []Record) []Record {
-	factory, hasFactory := s.factories[table]
+func (d *Dumbo) InsertMany(t *testing.T, db DB, table string, partials []Record) []Record {
+	factory, hasFactory := d.factories[table]
 	if !hasFactory {
 		return insert(t, db, table, partials)
 	}
 
-	run := s.runs[len(s.runs)-1]
+	run := d.runs[len(d.runs)-1]
 	_, hasIndexes := run[table]
 	if !hasIndexes {
 		run[table] = make([]Index, len(factory.UniqueBy))
@@ -90,14 +90,14 @@ func (s *Dumbo) InsertMany(t *testing.T, db DB, table string, partials []Record)
 		}
 	}
 
-	return insert(t, db, table, generate(s.runs, factory, partials))
+	return insert(t, db, table, generate(d.runs, factory, partials))
 }
 
 // Remove unique indexes from sub-test when done.
-func (s *Dumbo) Run(t *testing.T, f func(s *Dumbo)) {
-	s.runs = append(s.runs, make(map[string][]Index))
-	t.Cleanup(func() { s.runs = s.runs[:len(s.runs)-1] })
-	f(s)
+func (d *Dumbo) Run(t *testing.T, r func(d *Dumbo)) {
+	d.runs = append(d.runs, make(map[string][]Index))
+	t.Cleanup(func() { d.runs = d.runs[:len(d.runs)-1] })
+	r(d)
 }
 
 func insert(t *testing.T, db DB, table string, records []Record) []Record {
