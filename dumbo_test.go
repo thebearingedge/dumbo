@@ -190,12 +190,12 @@ func TestNestedRuns(t *testing.T) {
 	)
 
 	t.Run("shared seed", func(t *testing.T) {
-		sp := dumbotest.RequireBegin(t, db)
+		tx := dumbotest.RequireBegin(t, db)
 
-		seeder.SeedOne(t, sp, "user", Record{"username": "gopher"})
+		seeder.SeedOne(t, tx, "user", Record{"username": "gopher"})
 
 		t.Run("nested duplicate", func(t *testing.T) {
-			sp = dumbotest.RequireSavepoint(t, sp)
+			sp := dumbotest.RequireSavepoint(t, tx)
 
 			assert.PanicsWithError(t, `maximum 5 retries exceeded generating record for table "user"`, func() {
 				seeder.Run(t, func(s *Dumbo) {
@@ -208,7 +208,7 @@ func TestNestedRuns(t *testing.T) {
 		})
 
 		t.Run("nested unique", func(t *testing.T) {
-			sp = dumbotest.RequireSavepoint(t, sp)
+			sp := dumbotest.RequireSavepoint(t, tx)
 
 			assert.NotPanics(t, func() {
 				seeder.Run(t, func(s *Dumbo) {
