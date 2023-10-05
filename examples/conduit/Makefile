@@ -20,8 +20,8 @@ test:
 	DATABASE_URL=$(DATABASE_URL) go test -count=1 -v ./...
 
 cover:
-	DATABASE_URL=$(DATABASE_URL) go test -count=1 -v ./... -coverprofile .coverage/dumbo.out
-	go tool cover -html=.coverage/dumbo.out -o .coverage/dumbo.html
+	DATABASE_URL=$(DATABASE_URL) go test -count=1 -v ./... -coverprofile .coverage/conduit.out
+	go tool cover -html=.coverage/conduit.out -o .coverage/conduit.html
 
 # we're doing this to use make as a task runner instead of a build system
 # this last recipe allows us to pass extra arguments to recipes
