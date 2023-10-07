@@ -8,8 +8,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - ${POSTGRES_PORT}:5432
-    volumes:
-      - pg_data:/var/lib/postgresql/data
+    tmpfs:
+      - /var/lib/postgresql/data
     healthcheck:
       test: pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} || exit 1
       interval: 5s
@@ -38,7 +38,3 @@ services:
     depends_on:
       database:
         condition: service_healthy
-
-volumes:
-
-  pg_data:
