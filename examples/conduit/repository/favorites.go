@@ -2,10 +2,10 @@ package repository
 
 import "github.com/thebearingedge/dumbo/examples/conduit/infrastructure/postgres"
 
-type favoritesRepository struct {
+type FavoritesRepository struct {
 	db *postgres.DB
 }
 
-func NewFavoritesRepository(db *postgres.DB) favoritesRepository {
-	return favoritesRepository{db: db}
+func NewFavoritesRepository(db *postgres.DB) FavoritesRepository {
+	return FavoritesRepository{db: db}
 }

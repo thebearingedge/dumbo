@@ -2,10 +2,10 @@ package repository
 
 import "github.com/thebearingedge/dumbo/examples/conduit/infrastructure/postgres"
 
-type commentsRepository struct {
+type CommentsRepository struct {
 	db *postgres.DB
 }
 
-func NewCommentsRepository(db *postgres.DB) commentsRepository {
-	return commentsRepository{db: db}
+func NewCommentsRepository(db *postgres.DB) CommentsRepository {
+	return CommentsRepository{db: db}
 }

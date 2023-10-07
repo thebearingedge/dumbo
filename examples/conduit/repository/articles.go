@@ -2,10 +2,10 @@ package repository
 
 import "github.com/thebearingedge/dumbo/examples/conduit/infrastructure/postgres"
 
-type articlesRepository struct {
+type ArticlesRepository struct {
 	db *postgres.DB
 }
 
-func NewArticlesRepository(db *postgres.DB) articlesRepository {
-	return articlesRepository{db: db}
+func NewArticlesRepository(db *postgres.DB) ArticlesRepository {
+	return ArticlesRepository{db: db}
 }
