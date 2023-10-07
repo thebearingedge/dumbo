@@ -6,44 +6,32 @@ import (
 	"os"
 	"testing"
 
-	_ "github.com/lib/pq"
+	_ "github.com/lib/pq" // register postgres driver
 	"github.com/stretchr/testify/require"
 )
 
 func RequireDB(t *testing.T) *sql.DB {
+	t.Helper()
 	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
-	t.Cleanup(func() {
-		if db == nil {
-			return
-		}
-		if err := db.Close(); err != nil {
-			panic(err)
-		}
-	})
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	require.NoError(t, err)
 	return db
 }
 
 func RequireBegin(t *testing.T, db *sql.DB) *sql.Tx {
+	t.Helper()
 	tx, err := db.Begin()
-	t.Cleanup(func() {
-		if tx == nil {
-			return
-		}
-		if err := tx.Rollback(); err != nil {
-			panic(err)
-		}
-	})
+	t.Cleanup(func() { require.NoError(t, tx.Rollback()) })
 	require.NoError(t, err)
 	return tx
 }
 
 func RequireSavepoint(t *testing.T, tx *sql.Tx) *sql.Tx {
+	t.Helper()
 	_, err := tx.Exec(fmt.Sprintf("savepoint %q", t.Name()))
 	t.Cleanup(func() {
-		if _, err := tx.Exec(fmt.Sprintf("rollback to savepoint %q", t.Name())); err != nil {
-			panic(err)
-		}
+		_, err := tx.Exec(fmt.Sprintf("rollback to savepoint %q", t.Name()))
+		require.NoError(t, err)
 	})
 	require.NoError(t, err)
 	return tx

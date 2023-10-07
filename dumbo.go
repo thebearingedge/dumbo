@@ -131,8 +131,10 @@ func (d *Dumbo) Run(t *testing.T, r func(d *Dumbo)) {
 func insert(t *testing.T, db DB, table string, records []Record) []Record {
 	first := records[0]
 
+	keys := make([]string, 0, len(first))
 	columns := make([]string, 0, len(first))
 	for column := range first {
+		keys = append(keys, column)
 		columns = append(columns, fmt.Sprintf("%q", column))
 	}
 
@@ -142,8 +144,8 @@ func insert(t *testing.T, db DB, table string, records []Record) []Record {
 
 	for _, record := range records {
 		tuple := make([]string, 0, len(first))
-		for column := range first {
-			values = append(values, record[column])
+		for _, key := range keys {
+			values = append(values, record[key])
 			tuple = append(tuple, fmt.Sprintf("$%v", p))
 			p++
 		}
@@ -199,10 +201,9 @@ EACH_PARTIAL:
 					if _, exists := indexes[j][key]; exists {
 						attempts++
 						continue EACH_RECORD
-					} else {
-						if i == len(runs)-1 {
-							indexes[j][key] = struct{}{}
-						}
+					}
+					if i == len(runs)-1 {
+						indexes[j][key] = struct{}{}
 					}
 				}
 			}
