@@ -129,7 +129,8 @@ func (d Dumbo) FetchOne(t *testing.T, db DB, query string, values ...any) Record
 func (d Dumbo) FetchMany(t *testing.T, db DB, query string, values ...any) []Record {
 	t.Helper()
 	rows, err := db.Query(query, values...)
-	require.NoError(t, err, fmt.Sprintf("running query %q", query))
+	require.NoError(t, err, fmt.Sprintf("running query:\n\n%v", query))
+	defer rows.Close()
 
 	return fetchAll(t, rows)
 }
