@@ -1,4 +1,4 @@
-package model
+package schema
 
 import "database/sql"
 
@@ -13,10 +13,9 @@ type Registration struct {
 	Username string
 }
 
-type Authentication struct {
-	ID       uint64
+type User struct {
+	ID       int64
 	Email    string
-	Token    string
 	Username string
 	Bio      sql.NullString
 	Image    sql.NullString
