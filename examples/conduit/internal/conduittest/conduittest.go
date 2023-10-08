@@ -17,6 +17,8 @@ import (
 func RequireDB(t *testing.T) *postgres.DB {
 	t.Helper()
 	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	require.NoError(t, err)
 	return &postgres.DB{DB: db}
