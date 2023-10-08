@@ -67,8 +67,9 @@ func TestFindByEmail(t *testing.T) {
 	db := conduittest.RequireDB(t)
 	tx := conduittest.RequireBegin(t, db)
 
+	email := "gopher@google.com"
 	conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{
-		"email":    "gopher@google.com",
+		"email":    email,
 		"username": "gopher",
 	})
 
@@ -77,11 +78,11 @@ func TestFindByEmail(t *testing.T) {
 
 		users := NewUsersRepository(sp)
 
-		found, err := users.FindByEmail("gopher@google.com")
+		found, err := users.FindByEmail(email)
 
 		assert.NoError(t, err)
 		assert.Equal(t, "gopher", found.Username)
-		assert.Equal(t, "gopher@google.com", found.Email)
+		assert.Equal(t, email, found.Email)
 	})
 
 	t.Run("does not find user with mismatched email", func(t *testing.T) {
@@ -100,7 +101,8 @@ func TestFindByID(t *testing.T) {
 	db := conduittest.RequireDB(t)
 	tx := conduittest.RequireBegin(t, db)
 
-	user := conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{
+	id := uint64(1)
+	conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{
 		"email":    "gopher@google.com",
 		"username": "gopher",
 	})
@@ -110,7 +112,7 @@ func TestFindByID(t *testing.T) {
 
 		users := NewUsersRepository(sp)
 
-		found, err := users.FindByID(uint64(user["id"].(int64)))
+		found, err := users.FindByID(id)
 
 		assert.NoError(t, err)
 		assert.Equal(t, "gopher", found.Username)
@@ -122,7 +124,7 @@ func TestFindByID(t *testing.T) {
 
 		users := NewUsersRepository(sp)
 
-		found, err := users.FindByID(uint64(user["id"].(int64) + 1))
+		found, err := users.FindByID(id + 1)
 
 		assert.NoError(t, err)
 		assert.Nil(t, found)
