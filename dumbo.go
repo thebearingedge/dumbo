@@ -78,12 +78,11 @@ func (d *Dumbo) SeedOne(t *testing.T, db DB, table string, partial Record) Recor
 
 // Truncate the target table before inserting the records.
 func (d *Dumbo) SeedMany(t *testing.T, db DB, table string, partials []Record) []Record {
-	factory, hasFactory := d.factories[table]
-	if !hasFactory {
-		return seed(t, db, table, partials)
-	}
+	t.Helper()
+	_, err := db.Exec(fmt.Sprintf(`truncate table %q restart identity cascade`, table))
+	require.NoError(t, err, fmt.Sprintf("truncating table %q", table))
 
-	return seed(t, db, table, generate(d.runs, d.config.retries, factory, partials))
+	return d.InsertMany(t, db, table, partials)
 }
 
 // Add a record to the target table.
@@ -93,6 +92,7 @@ func (d *Dumbo) InsertOne(t *testing.T, db DB, table string, partial Record) Rec
 
 // Add records to the target table.
 func (d *Dumbo) InsertMany(t *testing.T, db DB, table string, partials []Record) []Record {
+	t.Helper()
 	factory, hasFactory := d.factories[table]
 	if !hasFactory {
 		return insert(t, db, table, partials)
@@ -107,14 +107,27 @@ func (d *Dumbo) InsertMany(t *testing.T, db DB, table string, partials []Record)
 		}
 	}
 
-	return insert(t, db, table, generate(d.runs, d.config.retries, factory, partials))
+	records, indexed, err := generate(d.runs, d.config.retries, factory, partials)
+	t.Cleanup(func() {
+		for i, key := range indexed {
+			delete(run[table][i], key)
+		}
+	})
+	if err != nil {
+		panic(err)
+	}
+	return insert(t, db, table, records)
 }
 
+// Select one row from the table
 func (d Dumbo) FetchOne(t *testing.T, db DB, query string, values ...any) Record {
+	t.Helper()
 	return d.FetchMany(t, db, query, values...)[0]
 }
 
+// Run query and return all rows
 func (d Dumbo) FetchMany(t *testing.T, db DB, query string, values ...any) []Record {
+	t.Helper()
 	rows, err := db.Query(query, values...)
 	require.NoError(t, err, fmt.Sprintf("running query %q", query))
 
@@ -123,6 +136,7 @@ func (d Dumbo) FetchMany(t *testing.T, db DB, query string, values ...any) []Rec
 
 // Remove unique indexes from sub-test when done.
 func (d *Dumbo) Run(t *testing.T, r func(d *Dumbo)) {
+	t.Helper()
 	d.runs = append(d.runs, make(map[string][]Index))
 	t.Cleanup(func() { d.runs = d.runs[:len(d.runs)-1] })
 	r(d)
@@ -162,15 +176,9 @@ func insert(t *testing.T, db DB, table string, records []Record) []Record {
 	return fetchAll(t, rows)
 }
 
-func seed(t *testing.T, db DB, table string, records []Record) []Record {
-	_, err := db.Exec(fmt.Sprintf(`truncate table %q restart identity cascade`, table))
-	require.NoError(t, err, fmt.Sprintf("truncating table %q", table))
+func generate(runs []map[string][]Index, retries int, factory Factory, partials []Record) ([]Record, map[int]string, error) {
 
-	return insert(t, db, table, records)
-}
-
-func generate(runs []map[string][]Index, retries int, factory Factory, partials []Record) []Record {
-
+	indexed := make(map[int]string)
 	records := make([]Record, 0, len(partials))
 
 EACH_PARTIAL:
@@ -185,7 +193,7 @@ EACH_PARTIAL:
 					retries,
 					factory.Table,
 				)
-				panic(err)
+				return nil, nil, err
 			}
 
 			record := factory.NewRecord()
@@ -203,6 +211,7 @@ EACH_PARTIAL:
 						continue EACH_RECORD
 					}
 					if i == len(runs)-1 {
+						indexed[j] = key
 						indexes[j][key] = struct{}{}
 					}
 				}
@@ -214,7 +223,7 @@ EACH_PARTIAL:
 		}
 	}
 
-	return records
+	return records, indexed, nil
 }
 
 func fetchAll(t *testing.T, rows *sql.Rows) []Record {
