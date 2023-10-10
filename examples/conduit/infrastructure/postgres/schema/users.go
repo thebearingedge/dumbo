@@ -20,10 +20,3 @@ type User struct {
 	Bio      sql.NullString
 	Image    sql.NullString
 }
-
-type Profile struct {
-	Username  string
-	Bio       string
-	Image     string
-	Following bool
-}

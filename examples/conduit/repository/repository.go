@@ -4,6 +4,6 @@ import (
 	"database/sql"
 )
 
-type repository interface {
+type service interface {
 	QueryRows(sql string, values ...any) (*sql.Rows, error)
 }

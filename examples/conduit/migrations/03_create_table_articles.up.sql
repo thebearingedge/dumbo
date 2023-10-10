@@ -9,5 +9,6 @@ create table articles (
   updated_at  timestamptz not null default now(),
 
   primary key (id),
+  unique (slug),
   foreign key (author_id) references users (id)
 );

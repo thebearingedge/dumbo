@@ -7,10 +7,10 @@ import (
 )
 
 type UsersRepository struct {
-	db repository
+	db service
 }
 
-func NewUsersRepository(db repository) UsersRepository {
+func NewUsersRepository(db service) UsersRepository {
 	return UsersRepository{db: db}
 }
 
