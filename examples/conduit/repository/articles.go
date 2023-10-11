@@ -190,3 +190,63 @@ func (r ArticlesRepository) PartialUpdate(p schema.ArticlePatch) (*schema.Articl
 
 	return &a, nil
 }
+
+func (r ArticlesRepository) FindBySlug(slug string) (*schema.Article, error) {
+
+	sql := `
+		select a.slug,
+		       a.title,
+		       a.description,
+		       a.body,
+		       array_agg(t.name) filter (where t.name is not null) tag_list,
+		       a.created_at,
+		       a.updated_at,
+		       json_build_object(
+		         'username',  u.username,
+		         'bio',       u.bio,
+		         'image',     u.image_url,
+		         'following', f.following_id is not null
+		       ) author
+		  from articles a
+		  join users u
+		    on a.author_id = u.id
+		  left join article_tags at
+		    on a.id = at.article_id
+		  left join tags t
+		    on at.tag_id = t.id
+		  left join followers f
+		    on a.author_id = f.following_id and u.id = f.follower_id
+		 where a.slug = $1
+		 group by a.slug,
+		          a.title,
+		          a.description,
+		          a.body,
+		          a.created_at,
+		          a.updated_at,
+		          u.username,
+		          u.bio,
+		          u.image_url,
+		          f.following_id
+	`
+
+	rows, err := r.db.QueryRows(sql, slug)
+	if err != nil {
+		return nil, fmt.Errorf(`updating article: %w`, err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, nil
+	}
+
+	a := schema.Article{}
+	if err := rows.Scan(&a.Slug, &a.Title, &a.Description, &a.Body, pq.Array(&a.TagList), &a.CreatedAt, &a.UpdatedAt, &a.Author); err != nil {
+		return nil, fmt.Errorf(`scanning updated article: %w`, err)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(`iterating article results: %w`, err)
+	}
+
+	return &a, nil
+}

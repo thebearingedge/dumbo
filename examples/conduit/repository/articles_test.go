@@ -140,3 +140,33 @@ func TestUpdateArticle(t *testing.T) {
 		assert.Nil(t, patched)
 	})
 }
+
+func TestFindArticleBySlug(t *testing.T) {
+	db := conduittest.RequireDB(t)
+	conduittest.RequireTruncate(t, db, "article_tags")
+	conduittest.RequireTruncate(t, db, "tags")
+	conduittest.RequireTruncate(t, db, "articles")
+
+	tx := conduittest.RequireBegin(t, db)
+	user := conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{})
+	article := conduittest.Seeder.SeedOne(t, tx, "articles", dumbo.Record{
+		"author_id": user["id"],
+		"slug":      "postgres-rules",
+		"title":     "Postgres Rules",
+	})
+
+	articles := NewArticlesRepository(tx)
+
+	t.Run("finds existing articles", func(t *testing.T) {
+		found, err := articles.FindBySlug(article["slug"].(string))
+		assert.NoError(t, err)
+		assert.Equal(t, "postgres-rules", found.Slug)
+		assert.Equal(t, "Postgres Rules", found.Title)
+	})
+
+	t.Run("does not find non-existent articles", func(t *testing.T) {
+		found, err := articles.FindBySlug("postgres-is-mid")
+		assert.NoError(t, err)
+		assert.Nil(t, found)
+	})
+}
