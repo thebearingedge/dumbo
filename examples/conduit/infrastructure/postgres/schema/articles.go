@@ -16,11 +16,13 @@ type NewArticle struct {
 	TagList     []string
 }
 
-type ArticleUpdate struct {
-	Title       string
-	Description string
-	Body        string
-	TagList     []string
+type ArticlePatch struct {
+	ID          uint64
+	AuthorID    uint64
+	Title       sql.NullString
+	Slug        sql.NullString
+	Description sql.NullString
+	Body        sql.NullString
 }
 
 type Article struct {

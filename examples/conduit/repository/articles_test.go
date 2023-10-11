@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -70,5 +71,72 @@ func TestPublishArticle(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Nil(t, published)
+	})
+}
+
+func TestUpdateArticle(t *testing.T) {
+	db := conduittest.RequireDB(t)
+	conduittest.RequireTruncate(t, db, "article_tags")
+	conduittest.RequireTruncate(t, db, "tags")
+	conduittest.RequireTruncate(t, db, "articles")
+
+	t.Run("skips non-existent article", func(t *testing.T) {
+		tx := conduittest.RequireBegin(t, db)
+		user := conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{})
+
+		articles := NewArticlesRepository(tx)
+		patched, err := articles.PartialUpdate(schema.ArticlePatch{
+			ID:          uint64(1),
+			AuthorID:    uint64(user["id"].(int64)),
+			Slug:        sql.NullString{String: "postgres-is-the-best", Valid: true},
+			Title:       sql.NullString{String: "Postgres is the Best", Valid: true},
+			Description: sql.NullString{String: "it's obvious", Valid: true},
+			Body:        sql.NullString{String: "blah", Valid: true},
+		})
+
+		assert.NoError(t, err)
+		assert.Nil(t, patched)
+	})
+
+	t.Run("updates the article", func(t *testing.T) {
+		tx := conduittest.RequireBegin(t, db)
+		user := conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{})
+		published := conduittest.Seeder.SeedOne(t, tx, "articles", dumbo.Record{
+			"author_id": user["id"],
+		})
+
+		articles := NewArticlesRepository(tx)
+		patched, err := articles.PartialUpdate(schema.ArticlePatch{
+			ID:       uint64(published["id"].(int64)),
+			AuthorID: uint64(user["id"].(int64)),
+			Slug:     sql.NullString{String: "postgres-is-just-ok", Valid: true},
+			Title:    sql.NullString{String: "Postgres is Just OK", Valid: true},
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, patched.Author.Username, user["username"])
+		assert.Equal(t, patched.Slug, "postgres-is-just-ok")
+		assert.Equal(t, patched.Title, "Postgres is Just OK")
+		assert.Equal(t, patched.Description, published["description"])
+		assert.Equal(t, patched.Body, published["body"])
+	})
+
+	t.Run("skips duplicate slugs", func(t *testing.T) {
+		tx := conduittest.RequireBegin(t, db)
+		user := conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{})
+		published := conduittest.Seeder.SeedOne(t, tx, "articles", dumbo.Record{
+			"slug":      "postgres-is-just-ok",
+			"author_id": user["id"],
+		})
+
+		articles := NewArticlesRepository(tx)
+		patched, err := articles.PartialUpdate(schema.ArticlePatch{
+			ID:       uint64(published["id"].(int64)),
+			AuthorID: uint64(user["id"].(int64)),
+			Slug:     sql.NullString{String: "postgres-is-just-ok", Valid: true},
+		})
+
+		assert.NoError(t, err)
+		assert.Nil(t, patched)
 	})
 }

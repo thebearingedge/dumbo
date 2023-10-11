@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -69,6 +70,27 @@ var Seeder dumbo.Dumbo = dumbo.New(
 			},
 			func(r dumbo.Record) string {
 				return fmt.Sprint(r["email"])
+			},
+		},
+	},
+	dumbo.Factory{
+		Table: "articles",
+		NewRecord: func() dumbo.Record {
+			title := faker.Sentence()
+			whitespace := regexp.MustCompile(`[^A-Za-z0-9]`)
+			return dumbo.Record{
+				"title":       title,
+				"slug":        whitespace.ReplaceAllString(strings.ToLower(title), "-"),
+				"description": faker.Sentence(),
+				"body":        faker.Paragraph(),
+			}
+		},
+		UniqueBy: []dumbo.Indexer{
+			func(r dumbo.Record) string {
+				return fmt.Sprint(r["slug"])
+			},
+			func(r dumbo.Record) string {
+				return fmt.Sprint(r["title"])
 			},
 		},
 	},
