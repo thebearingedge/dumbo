@@ -250,3 +250,84 @@ func (r ArticlesRepository) FindBySlug(slug string) (*schema.Article, error) {
 
 	return &a, nil
 }
+
+type ArticleFilter struct {
+	Tags      []string
+	Author    string
+	Favorited string
+	Limit     int
+	Offset    int
+}
+
+func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
+
+	sql := `
+		select a.slug,
+		       a.title,
+		       a.description,
+		       a.body,
+		       array_agg(t.name) filter (where t.name is not null) tag_list,
+		       a.created_at,
+		       a.updated_at,
+		       json_build_object(
+		         'username',  u.username,
+		         'bio',       u.bio,
+		         'image',     u.image_url,
+		         'following', f.following_id is not null
+		       ) author
+		  from articles a
+		  join users u
+		    on a.author_id = u.id
+		  left join article_tags at
+		    on a.id = at.article_id
+		  left join tags t
+		    on at.tag_id = t.id
+		  left join followers f
+		    on a.author_id = f.following_id and u.id = f.follower_id
+		 where case
+		         when array_length($1::text[], 1) > 0
+		         then t.name = any($1::text[])
+		         else true
+		       end
+		 group by a.id,
+		          a.slug,
+		          a.title,
+		          a.description,
+		          a.body,
+		          a.created_at,
+		          a.updated_at,
+		          u.username,
+		          u.bio,
+		          u.image_url,
+		          f.following_id
+		 order by a.id desc
+		 limit case
+		         when $2 = 0
+		         then 20
+		         else $2
+		       end
+	`
+
+	rows, err := r.db.QueryRows(sql, pq.Array(f.Tags), f.Limit)
+	if err != nil {
+		return nil, fmt.Errorf(`selecting articles: %w`, err)
+	}
+	defer rows.Close()
+
+	articles := make([]schema.Article, 0)
+	for rows.Next() {
+		a := schema.Article{}
+		if err := rows.Scan(&a.Slug, &a.Title, &a.Description, &a.Body, pq.Array(&a.TagList), &a.CreatedAt, &a.UpdatedAt, &a.Author); err != nil {
+			return nil, fmt.Errorf(`scanning article: %w`, err)
+		}
+		articles = append(articles, a)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(`iterating article results: %w`, err)
+	}
+
+	list := schema.ArticleList{Articles: articles, ArticlesCount: len(articles)}
+
+	return &list, nil
+}

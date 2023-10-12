@@ -13,9 +13,7 @@ import (
 
 func TestPublishArticle(t *testing.T) {
 	db := conduittest.RequireDB(t)
-	conduittest.RequireTruncate(t, db, "article_tags")
-	conduittest.RequireTruncate(t, db, "tags")
-	conduittest.RequireTruncate(t, db, "articles")
+	conduittest.RequireTruncate(t, db, "article_tags", "tags", "articles")
 
 	t.Run("saves the article", func(t *testing.T) {
 		tx := conduittest.RequireBegin(t, db)
@@ -76,9 +74,7 @@ func TestPublishArticle(t *testing.T) {
 
 func TestUpdateArticle(t *testing.T) {
 	db := conduittest.RequireDB(t)
-	conduittest.RequireTruncate(t, db, "article_tags")
-	conduittest.RequireTruncate(t, db, "tags")
-	conduittest.RequireTruncate(t, db, "articles")
+	conduittest.RequireTruncate(t, db, "article_tags", "tags", "articles")
 
 	t.Run("skips non-existent article", func(t *testing.T) {
 		tx := conduittest.RequireBegin(t, db)
@@ -143,9 +139,7 @@ func TestUpdateArticle(t *testing.T) {
 
 func TestFindArticleBySlug(t *testing.T) {
 	db := conduittest.RequireDB(t)
-	conduittest.RequireTruncate(t, db, "article_tags")
-	conduittest.RequireTruncate(t, db, "tags")
-	conduittest.RequireTruncate(t, db, "articles")
+	conduittest.RequireTruncate(t, db, "article_tags", "tags", "articles")
 
 	tx := conduittest.RequireBegin(t, db)
 	user := conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{})
@@ -168,5 +162,78 @@ func TestFindArticleBySlug(t *testing.T) {
 		found, err := articles.FindBySlug("postgres-is-mid")
 		assert.NoError(t, err)
 		assert.Nil(t, found)
+	})
+}
+
+func TestListArticlesReverseChronological(t *testing.T) {
+	db := conduittest.RequireDB(t)
+	conduittest.RequireTruncate(t, db, "article_tags", "tags", "articles")
+
+	tx := conduittest.RequireBegin(t, db)
+	user := conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{})
+	seed := conduittest.Seeder.SeedMany(t, tx, "articles", []dumbo.Record{
+		{
+			"author_id": user["id"],
+			"slug":      "postgres-rules",
+			"title":     "Postgres Rules",
+		},
+		{
+			"author_id": user["id"],
+			"slug":      "postgres-sucks",
+			"title":     "Postgres Sucks",
+		},
+		{
+			"author_id": user["id"],
+			"slug":      "postgres-ok",
+			"title":     "Postgres OK",
+		},
+	})
+	tags := conduittest.Seeder.SeedMany(t, tx, "tags", []dumbo.Record{
+		{"name": "good"},
+		{"name": "bad"},
+	})
+	conduittest.Seeder.SeedMany(t, tx, "article_tags", []dumbo.Record{
+		{"article_id": seed[0]["id"], "tag_id": tags[0]["id"]},
+		{"article_id": seed[1]["id"], "tag_id": tags[1]["id"]},
+		{"article_id": seed[2]["id"], "tag_id": tags[0]["id"]},
+	})
+
+	articles := NewArticlesRepository(tx)
+
+	t.Run("filters by tag", func(t *testing.T) {
+		good, err := articles.List(ArticleFilter{
+			Tags: []string{"good"},
+		})
+
+		assert.NoError(t, err)
+		assert.Len(t, good.Articles, 2)
+		assert.Equal(t, good.Articles[0].Slug, "postgres-ok")
+		assert.Equal(t, good.Articles[1].Slug, "postgres-rules")
+
+		bad, err := articles.List(ArticleFilter{
+			Tags: []string{"bad"},
+		})
+
+		assert.NoError(t, err)
+		assert.Len(t, bad.Articles, 1)
+		assert.Equal(t, bad.Articles[0].Slug, "postgres-sucks")
+
+		all, err := articles.List(ArticleFilter{})
+
+		assert.NoError(t, err)
+		assert.Len(t, all.Articles, 3)
+		assert.Equal(t, all.Articles[0].Slug, "postgres-ok")
+		assert.Equal(t, all.Articles[1].Slug, "postgres-sucks")
+		assert.Equal(t, all.Articles[2].Slug, "postgres-rules")
+
+		alsoAll, err := articles.List(ArticleFilter{
+			Tags: []string{"good", "bad"},
+		})
+
+		assert.NoError(t, err)
+		assert.Len(t, alsoAll.Articles, 3)
+		assert.Equal(t, alsoAll.Articles[0].Slug, "postgres-ok")
+		assert.Equal(t, alsoAll.Articles[1].Slug, "postgres-sucks")
+		assert.Equal(t, alsoAll.Articles[2].Slug, "postgres-rules")
 	})
 }

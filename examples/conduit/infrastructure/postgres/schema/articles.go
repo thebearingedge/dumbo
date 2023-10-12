@@ -40,7 +40,7 @@ type Article struct {
 
 type ArticleList struct {
 	Articles      []Article
-	ArticlesCount uint
+	ArticlesCount int
 }
 
 type Author struct {
