@@ -289,6 +289,7 @@ func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
 		         then t.name = any($1::text[])
 		         else true
 		       end
+		   and ($2 = '' or u.username = $2)
 		 group by a.id,
 		          a.slug,
 		          a.title,
@@ -301,14 +302,10 @@ func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
 		          u.image_url,
 		          f.following_id
 		 order by a.id desc
-		 limit case
-		         when $2 = 0
-		         then 20
-		         else $2
-		       end
+		 limit case when $3 = 0 then 20 else $3 end
 	`
 
-	rows, err := r.db.QueryRows(sql, pq.Array(f.Tags), f.Limit)
+	rows, err := r.db.QueryRows(sql, pq.Array(f.Tags), f.Author, f.Limit)
 	if err != nil {
 		return nil, fmt.Errorf(`selecting articles: %w`, err)
 	}

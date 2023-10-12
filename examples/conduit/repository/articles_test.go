@@ -170,20 +170,23 @@ func TestListArticlesReverseChronological(t *testing.T) {
 	conduittest.RequireTruncate(t, db, "article_tags", "tags", "articles")
 
 	tx := conduittest.RequireBegin(t, db)
-	user := conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{})
+	users := conduittest.Seeder.SeedMany(t, tx, "users", []dumbo.Record{
+		{"username": "irwin"},
+		{"username": "billy"},
+	})
 	seed := conduittest.Seeder.SeedMany(t, tx, "articles", []dumbo.Record{
 		{
-			"author_id": user["id"],
+			"author_id": users[0]["id"],
 			"slug":      "postgres-rules",
 			"title":     "Postgres Rules",
 		},
 		{
-			"author_id": user["id"],
+			"author_id": users[1]["id"],
 			"slug":      "postgres-sucks",
 			"title":     "Postgres Sucks",
 		},
 		{
-			"author_id": user["id"],
+			"author_id": users[0]["id"],
 			"slug":      "postgres-ok",
 			"title":     "Postgres OK",
 		},
@@ -207,8 +210,8 @@ func TestListArticlesReverseChronological(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Len(t, good.Articles, 2)
-		assert.Equal(t, good.Articles[0].Slug, "postgres-ok")
-		assert.Equal(t, good.Articles[1].Slug, "postgres-rules")
+		assert.Equal(t, "postgres-ok", good.Articles[0].Slug)
+		assert.Equal(t, "postgres-rules", good.Articles[1].Slug)
 
 		bad, err := articles.List(ArticleFilter{
 			Tags: []string{"bad"},
@@ -216,15 +219,15 @@ func TestListArticlesReverseChronological(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Len(t, bad.Articles, 1)
-		assert.Equal(t, bad.Articles[0].Slug, "postgres-sucks")
+		assert.Equal(t, "postgres-sucks", bad.Articles[0].Slug)
 
 		all, err := articles.List(ArticleFilter{})
 
 		assert.NoError(t, err)
 		assert.Len(t, all.Articles, 3)
-		assert.Equal(t, all.Articles[0].Slug, "postgres-ok")
-		assert.Equal(t, all.Articles[1].Slug, "postgres-sucks")
-		assert.Equal(t, all.Articles[2].Slug, "postgres-rules")
+		assert.Equal(t, "postgres-ok", all.Articles[0].Slug)
+		assert.Equal(t, "postgres-sucks", all.Articles[1].Slug)
+		assert.Equal(t, "postgres-rules", all.Articles[2].Slug)
 
 		alsoAll, err := articles.List(ArticleFilter{
 			Tags: []string{"good", "bad"},
@@ -232,8 +235,19 @@ func TestListArticlesReverseChronological(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Len(t, alsoAll.Articles, 3)
-		assert.Equal(t, alsoAll.Articles[0].Slug, "postgres-ok")
-		assert.Equal(t, alsoAll.Articles[1].Slug, "postgres-sucks")
-		assert.Equal(t, alsoAll.Articles[2].Slug, "postgres-rules")
+		assert.Equal(t, "postgres-ok", alsoAll.Articles[0].Slug)
+		assert.Equal(t, "postgres-sucks", alsoAll.Articles[1].Slug)
+		assert.Equal(t, "postgres-rules", alsoAll.Articles[2].Slug)
+	})
+
+	t.Run("filters by author username", func(t *testing.T) {
+		byIrwin, err := articles.List(ArticleFilter{
+			Author: "irwin",
+		})
+
+		assert.NoError(t, err)
+		assert.Len(t, byIrwin.Articles, 2)
+		assert.Equal(t, "irwin", byIrwin.Articles[0].Author.Username)
+		assert.Equal(t, "irwin", byIrwin.Articles[1].Author.Username)
 	})
 }
