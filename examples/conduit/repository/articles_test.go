@@ -200,6 +200,10 @@ func TestListArticlesReverseChronological(t *testing.T) {
 		{"article_id": seed[1]["id"], "tag_id": tags[1]["id"]},
 		{"article_id": seed[2]["id"], "tag_id": tags[0]["id"]},
 	})
+	conduittest.Seeder.SeedMany(t, tx, "favorites", []dumbo.Record{
+		{"article_id": seed[1]["id"], "user_id": users[1]["id"]},
+		{"article_id": seed[2]["id"], "user_id": users[1]["id"]},
+	})
 
 	articles := NewArticlesRepository(tx)
 
@@ -249,5 +253,16 @@ func TestListArticlesReverseChronological(t *testing.T) {
 		assert.Len(t, byIrwin.Articles, 2)
 		assert.Equal(t, "irwin", byIrwin.Articles[0].Author.Username)
 		assert.Equal(t, "irwin", byIrwin.Articles[1].Author.Username)
+	})
+
+	t.Run("filters by user favorite", func(t *testing.T) {
+		billyFavs, err := articles.List(ArticleFilter{
+			Favorited: "billy",
+		})
+
+		assert.NoError(t, err)
+		assert.Len(t, billyFavs.Articles, 2)
+		assert.Equal(t, "postgres-ok", billyFavs.Articles[0].Slug)
+		assert.Equal(t, "postgres-sucks", billyFavs.Articles[1].Slug)
 	})
 }

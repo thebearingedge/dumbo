@@ -251,14 +251,6 @@ func (r ArticlesRepository) FindBySlug(slug string) (*schema.Article, error) {
 	return &a, nil
 }
 
-type ArticleFilter struct {
-	Tags      []string
-	Author    string
-	Favorited string
-	Limit     int
-	Offset    int
-}
-
 func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
 
 	sql := `
@@ -273,7 +265,7 @@ func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
 		         'username',  u.username,
 		         'bio',       u.bio,
 		         'image',     u.image_url,
-		         'following', f.following_id is not null
+		         'following', fo.following_id is not null
 		       ) author
 		  from articles a
 		  join users u
@@ -282,14 +274,19 @@ func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
 		    on a.id = at.article_id
 		  left join tags t
 		    on at.tag_id = t.id
-		  left join followers f
-		    on a.author_id = f.following_id and u.id = f.follower_id
+		  left join followers fo
+		    on a.author_id = fo.following_id and u.id = fo.follower_id
+		  left join favorites fa
+		    on a.id = fa.article_id
+		  left join users fu
+		    on fa.user_id = fu.id
 		 where case
 		         when array_length($1::text[], 1) > 0
 		         then t.name = any($1::text[])
 		         else true
 		       end
 		   and ($2 = '' or u.username = $2)
+		   and ($3 = '' or fu.username = $3)
 		 group by a.id,
 		          a.slug,
 		          a.title,
@@ -300,12 +297,18 @@ func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
 		          u.username,
 		          u.bio,
 		          u.image_url,
-		          f.following_id
+		          fo.following_id
 		 order by a.id desc
-		 limit case when $3 = 0 then 20 else $3 end
+		 limit case when $4 = 0 then 20 else $4 end
 	`
 
-	rows, err := r.db.QueryRows(sql, pq.Array(f.Tags), f.Author, f.Limit)
+	rows, err := r.db.QueryRows(
+		sql,
+		pq.Array(f.Tags),
+		f.Author,
+		f.Favorited,
+		f.Limit,
+	)
 	if err != nil {
 		return nil, fmt.Errorf(`selecting articles: %w`, err)
 	}
