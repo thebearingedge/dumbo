@@ -265,4 +265,15 @@ func TestListArticlesReverseChronological(t *testing.T) {
 		assert.Equal(t, "postgres-ok", billyFavs.Articles[0].Slug)
 		assert.Equal(t, "postgres-sucks", billyFavs.Articles[1].Slug)
 	})
+
+	t.Run("skips by offset", func(t *testing.T) {
+		skipFirst, err := articles.List(ArticleFilter{
+			Offset: 1,
+		})
+
+		assert.NoError(t, err)
+		assert.Len(t, skipFirst.Articles, 2)
+		assert.Equal(t, "postgres-sucks", skipFirst.Articles[0].Slug)
+		assert.Equal(t, "postgres-rules", skipFirst.Articles[1].Slug)
+	})
 }

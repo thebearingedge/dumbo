@@ -122,10 +122,14 @@ func (r ArticlesRepository) PartialUpdate(p schema.ArticlePatch) (*schema.Articl
 		         body        = coalesce($6, body)
 		   where id        = $1
 		     and author_id = $2
-		     and case when $3::text is null
-		              then true
-		              else not exists (select 1 from articles where slug = $3)
-		         end
+		     and (
+		           $3::text is null or not exists (
+		             select 1
+		               from articles
+		              where id   = $1
+		                and slug = $3::text
+		           )
+		     )
 		  returning id,
 		            slug,
 		            title,
@@ -280,11 +284,7 @@ func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
 		    on a.id = fa.article_id
 		  left join users fu
 		    on fa.user_id = fu.id
-		 where case
-		         when array_length($1::text[], 1) > 0
-		         then t.name = any($1::text[])
-		         else true
-		       end
+		 where ($1::text[] is null or t.name = any($1::text[]))
 		   and ($2 = '' or u.username = $2)
 		   and ($3 = '' or fu.username = $3)
 		 group by a.id,
@@ -300,6 +300,7 @@ func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
 		          fo.following_id
 		 order by a.id desc
 		 limit case when $4 = 0 then 20 else $4 end
+		 offset $5
 	`
 
 	rows, err := r.db.QueryRows(
@@ -308,6 +309,7 @@ func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
 		f.Author,
 		f.Favorited,
 		f.Limit,
+		f.Offset,
 	)
 	if err != nil {
 		return nil, fmt.Errorf(`selecting articles: %w`, err)
