@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/lib/pq"
 	"github.com/thebearingedge/dumbo/examples/conduit/infrastructure/postgres/schema"
@@ -35,7 +36,7 @@ func (r ArticlesRepository) Publish(n schema.NewArticle) (*schema.Article, error
 		  select unnest($6::text[])
 		  on conflict (name) do nothing
 		  returning id,
-					name
+		            name
 		), applied_tags as (
 		  select id,
 		         name
@@ -332,4 +333,24 @@ func (r ArticlesRepository) List(f ArticleFilter) (*schema.ArticleList, error) {
 	list := schema.ArticleList{Articles: articles, ArticlesCount: len(articles)}
 
 	return &list, nil
+}
+
+func (r ArticlesRepository) DeleteBySlug(authorID int64, slug string) (int64, error) {
+	if strings.TrimSpace(slug) == "" {
+		return 0, nil
+	}
+
+	sql := `
+		delete
+		  from articles
+		 where slug      = $1
+		   and author_id = $2
+	`
+
+	result, err := r.db.Exec(sql, slug, authorID)
+	if err != nil {
+		return 0, fmt.Errorf("deleting article by slug %q: %w", slug, err)
+	}
+
+	return result.RowsAffected()
 }

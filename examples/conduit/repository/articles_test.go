@@ -13,7 +13,6 @@ import (
 
 func TestPublishArticle(t *testing.T) {
 	db := conduittest.RequireDB(t)
-	conduittest.RequireTruncate(t, db, "article_tags", "tags", "articles")
 
 	t.Run("saves the article", func(t *testing.T) {
 		tx := conduittest.RequireBegin(t, db)
@@ -74,7 +73,6 @@ func TestPublishArticle(t *testing.T) {
 
 func TestUpdateArticle(t *testing.T) {
 	db := conduittest.RequireDB(t)
-	conduittest.RequireTruncate(t, db, "article_tags", "tags", "articles")
 
 	t.Run("skips non-existent article", func(t *testing.T) {
 		tx := conduittest.RequireBegin(t, db)
@@ -139,7 +137,6 @@ func TestUpdateArticle(t *testing.T) {
 
 func TestFindArticleBySlug(t *testing.T) {
 	db := conduittest.RequireDB(t)
-	conduittest.RequireTruncate(t, db, "article_tags", "tags", "articles")
 
 	tx := conduittest.RequireBegin(t, db)
 	user := conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{})
@@ -167,7 +164,6 @@ func TestFindArticleBySlug(t *testing.T) {
 
 func TestListArticlesReverseChronological(t *testing.T) {
 	db := conduittest.RequireDB(t)
-	conduittest.RequireTruncate(t, db, "article_tags", "tags", "articles")
 
 	tx := conduittest.RequireBegin(t, db)
 	users := conduittest.Seeder.SeedMany(t, tx, "users", []dumbo.Record{
@@ -275,5 +271,74 @@ func TestListArticlesReverseChronological(t *testing.T) {
 		assert.Len(t, skipFirst.Articles, 2)
 		assert.Equal(t, "postgres-sucks", skipFirst.Articles[0].Slug)
 		assert.Equal(t, "postgres-rules", skipFirst.Articles[1].Slug)
+	})
+}
+
+func TestDeleteArticleBySlug(t *testing.T) {
+	db := conduittest.RequireDB(t)
+	tx := conduittest.RequireBegin(t, db)
+
+	user := conduittest.Seeder.SeedOne(t, tx, "users", dumbo.Record{})
+	published := conduittest.Seeder.SeedOne(t, tx, "articles", dumbo.Record{
+		"author_id": user["id"],
+	})
+
+	t.Run("deletes the target article", func(t *testing.T) {
+		sp := conduittest.RequireSavepoint(t, tx)
+		articles := NewArticlesRepository(sp)
+
+		deleted, err := articles.DeleteBySlug(user["id"].(int64), published["slug"].(string))
+		assert.NoError(t, err)
+		assert.Equal(t, int64(1), deleted)
+
+		remaining := conduittest.Seeder.FetchMany(t, sp, `
+			select *
+			  from articles
+			 where slug = $1
+		`, published["slug"])
+
+		assert.Len(t, remaining, 0)
+	})
+
+	t.Run("only deletes the target article", func(t *testing.T) {
+		sp := conduittest.RequireSavepoint(t, tx)
+		articles := NewArticlesRepository(sp)
+
+		deleted, err := articles.DeleteBySlug(
+			user["id"].(int64),
+			published["slug"].(string)+"-foo",
+		)
+
+		assert.NoError(t, err)
+		assert.Equal(t, int64(0), deleted)
+
+		article := conduittest.Seeder.FetchOne(t, sp, `
+			select *
+			  from articles
+			 where id = $1
+		`, published["id"])
+
+		assert.Equal(t, published["slug"], article["slug"])
+	})
+
+	t.Run("only deletes the article owned by user", func(t *testing.T) {
+		sp := conduittest.RequireSavepoint(t, tx)
+		articles := NewArticlesRepository(sp)
+
+		deleted, err := articles.DeleteBySlug(
+			int64(2),
+			published["slug"].(string)+"-foo",
+		)
+
+		assert.NoError(t, err)
+		assert.Equal(t, int64(0), deleted)
+
+		article := conduittest.Seeder.FetchOne(t, sp, `
+			select *
+			  from articles
+			 where id = $1
+		`, published["id"])
+
+		assert.Equal(t, published["slug"], article["slug"])
 	})
 }
