@@ -3,11 +3,17 @@ package dumbo
 import (
 	"database/sql"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/iancoleman/strcase"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	strcase.ConfigureAcronym("id", "ID")
+}
 
 type DB interface {
 	Exec(string, ...any) (sql.Result, error)
@@ -16,131 +22,104 @@ type DB interface {
 
 type Record map[string]any
 
-type Indexer func(r Record) string
-
-type Factory struct {
-	Table     string
-	NewRecord func() Record
-	UniqueBy  []Indexer
-}
+type Generator func() Record
 
 type Index map[string]any
 
-type Config struct {
-	retries int
-}
+type Generation []Index
 
-func Defaults() Config {
-	return Config{
-		retries: 5,
-	}
-}
+type Indexer func(Record) string
 
 type Dumbo struct {
-	factories map[string]Factory
-	runs      []map[string][]Index
-	config    Config
+	factories   map[string]Factory
+	generations map[string][]Generation
+}
+
+type Factory struct {
+	Table     string
+	Generator Generator
+	UniqueBy  []Indexer
 }
 
 func New(factories ...Factory) Dumbo {
-	d := Dumbo{
-		factories: make(map[string]Factory, len(factories)),
-		runs:      make([]map[string][]Index, 0, 1),
-		config:    Defaults(),
-	}
-
-	run := make(map[string][]Index)
+	f := make(map[string]Factory, len(factories))
+	g := make(map[string][]Generation)
 
 	for _, factory := range factories {
-		indexes := make([]Index, len(factory.UniqueBy))
-		for i := range factory.UniqueBy {
-			indexes[i] = make(Index)
-		}
-		run[factory.Table] = indexes
-		d.factories[factory.Table] = factory
+		f[factory.Table] = factory
+		g[factory.Table] = make([]Generation, 0)
 	}
 
-	d.runs = append(d.runs, run)
-
-	return d
+	return Dumbo{
+		factories:   f,
+		generations: g,
+	}
 }
 
-func NewWithConfig(config Config, factories ...Factory) Dumbo {
-	d := New(factories...)
-	d.config = config
-	return d
-}
-
-// Truncate the target table before inserting the record.
-func (d *Dumbo) SeedOne(t *testing.T, db DB, table string, partial Record) Record {
-	return d.SeedMany(t, db, table, []Record{partial})[0]
-}
-
-// Truncate the target table before inserting the records.
-func (d *Dumbo) SeedMany(t *testing.T, db DB, table string, partials []Record) []Record {
+func (d Dumbo) Seed(t *testing.T, db DB, table string, partials any) {
 	t.Helper()
-	_, err := db.Exec(fmt.Sprintf(`truncate table %q restart identity cascade`, table))
-	require.NoError(t, err, fmt.Sprintf("truncating table %q", table))
 
-	return d.InsertMany(t, db, table, partials)
+	if table == "" || strings.TrimSpace(table) == "" {
+		t.Fatalf("table name must not be empty: got %q", table)
+	}
+
+	if _, ok := d.factories[table]; !ok {
+		t.Fatalf("table has no associated factory: %v", table)
+	}
+
+	_, err := db.Exec(fmt.Sprintf(`truncate table %v restart identity cascade`, identifier(table)))
+	require.NoError(t, err, fmt.Sprintf("truncating table %v", table))
+
+	d.Insert(t, db, table, partials)
 }
 
-// Add a record to the target table.
-func (d *Dumbo) InsertOne(t *testing.T, db DB, table string, partial Record) Record {
-	return d.InsertMany(t, db, table, []Record{partial})[0]
-}
-
-// Add records to the target table.
-func (d *Dumbo) InsertMany(t *testing.T, db DB, table string, partials []Record) []Record {
+func (d *Dumbo) Insert(t *testing.T, db DB, table string, partials any) {
 	t.Helper()
-	factory, hasFactory := d.factories[table]
-	if !hasFactory {
-		return insert(t, db, table, partials)
+
+	factory := d.factories[table]
+	generation := make([]Index, 0, len(factory.UniqueBy))
+	for range factory.UniqueBy {
+		generation = append(generation, make(Index))
 	}
 
-	run := d.runs[len(d.runs)-1]
-	_, hasIndexes := run[table]
-	if !hasIndexes {
-		run[table] = make([]Index, len(factory.UniqueBy))
-		for i := range factory.UniqueBy {
-			run[table][i] = make(Index)
+	d.generations[table] = append(d.generations[table], generation)
+	t.Cleanup(func() { d.generations[table] = d.generations[table][:len(d.generations)-1] })
+
+	// todo: validate that `partials` is a pointer or slice of pointers
+	// alternatively, there could be some magic for a nicer API, but risky
+
+	ps := make([]any, 0)
+	p := reflect.ValueOf(partials)
+
+	if reflect.Indirect(p).Kind() == reflect.Slice {
+		s := reflect.Indirect(p)
+		for i := 0; i < s.Len(); i++ {
+			ps = append(ps, s.Index(i).Interface())
 		}
+	} else {
+		ps = append(ps, p.Interface())
 	}
 
-	records, indexed, err := generate(d.runs, d.config.retries, factory, partials)
+	records, indexed, err := generate(5 /* todo: parameterize retries */, factory, d.generations[table], ps)
 	t.Cleanup(func() {
 		for i, key := range indexed {
-			delete(run[table][i], key)
+			delete(generation[i], key)
 		}
 	})
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("generating records: %w", err))
 	}
-	return insert(t, db, table, records)
-}
 
-// Select one row from the table
-func (d Dumbo) FetchOne(t *testing.T, db DB, query string, values ...any) Record {
-	t.Helper()
-	return d.FetchMany(t, db, query, values...)[0]
-}
+	inserted := insert(t, db, table, records)
 
-// Run query and return all rows
-func (d Dumbo) FetchMany(t *testing.T, db DB, query string, values ...any) []Record {
-	t.Helper()
-	rows, err := db.Query(query, values...)
-	require.NoError(t, err, fmt.Sprintf("running query:\n\n%v", query))
-	defer rows.Close()
-
-	return fetchAll(t, rows)
-}
-
-// Remove unique indexes from sub-test when done.
-func (d *Dumbo) Run(t *testing.T, r func(d *Dumbo)) {
-	t.Helper()
-	d.runs = append(d.runs, make(map[string][]Index))
-	t.Cleanup(func() { d.runs = d.runs[:len(d.runs)-1] })
-	r(d)
+	for i, r := range inserted {
+		p := reflect.Indirect(reflect.ValueOf(ps[i]))
+		for k, v := range r {
+			vs := p.FieldByName(strcase.ToCamel(k))
+			vm := reflect.ValueOf(v)
+			vs.Set(vm)
+		}
+	}
 }
 
 func insert(t *testing.T, db DB, table string, records []Record) []Record {
@@ -150,81 +129,33 @@ func insert(t *testing.T, db DB, table string, records []Record) []Record {
 	columns := make([]string, 0, len(first))
 	for column := range first {
 		keys = append(keys, column)
-		columns = append(columns, fmt.Sprintf("%q", column))
+		columns = append(columns, identifier(column))
 	}
 
 	params := make([]string, 0, len(records))
 	values := make([]any, 0, len(records))
-	p := 1
+	param := 1
 
 	for _, record := range records {
 		tuple := make([]string, 0, len(first))
 		for _, key := range keys {
 			values = append(values, record[key])
-			tuple = append(tuple, fmt.Sprintf("$%v", p))
-			p++
+			tuple = append(tuple, fmt.Sprintf("$%v", param))
+			param++
 		}
 		params = append(params, fmt.Sprintf("(%v)", strings.Join(tuple, ", ")))
 	}
 
-	rows, err := db.Query(fmt.Sprintf(`
+	sql := fmt.Sprintf(`
 		insert into %v (%v)
 		values %v
 		returning *
-	`, fmt.Sprintf("%q", table), strings.Join(columns, ", "), strings.Join(params, ", ")), values...)
+	`, identifier(table), strings.Join(columns, ", "), strings.Join(params, ", "))
+
+	rows, err := db.Query(sql, values...)
 	require.NoError(t, err, fmt.Sprintf("inserting row(s) into table %q", table))
 
 	return fetchAll(t, rows)
-}
-
-func generate(runs []map[string][]Index, retries int, factory Factory, partials []Record) ([]Record, map[int]string, error) {
-
-	indexed := make(map[int]string)
-	records := make([]Record, 0, len(partials))
-
-EACH_PARTIAL:
-	for _, partial := range partials {
-		attempts := 0
-
-	EACH_RECORD:
-		for {
-			if attempts > retries {
-				err := fmt.Errorf(
-					"maximum %v retries exceeded generating record for table %q",
-					retries,
-					factory.Table,
-				)
-				return nil, nil, err
-			}
-
-			record := factory.NewRecord()
-			for column, value := range partial {
-				record[column] = value
-			}
-
-			for i, run := range runs {
-				indexes := run[factory.Table]
-				for j, uniqueBy := range factory.UniqueBy {
-
-					key := uniqueBy(record)
-					if _, exists := indexes[j][key]; exists {
-						attempts++
-						continue EACH_RECORD
-					}
-					if i == len(runs)-1 {
-						indexed[j] = key
-						indexes[j][key] = struct{}{}
-					}
-				}
-			}
-
-			records = append(records, record)
-
-			continue EACH_PARTIAL
-		}
-	}
-
-	return records, indexed, nil
 }
 
 func fetchAll(t *testing.T, rows *sql.Rows) []Record {
@@ -252,4 +183,90 @@ func fetchAll(t *testing.T, rows *sql.Rows) []Record {
 	require.NoError(t, rows.Err(), "iterating rows returned from query")
 
 	return fetched
+}
+
+func generate(retries int, f Factory, g []Generation, partials []any) ([]Record, map[int]string, error) {
+
+	indexed := make(map[int]string)
+	records := make([]Record, 0, len(partials))
+
+EACH_PARTIAL:
+	for _, p := range partials {
+		attempts := 0
+
+	EACH_RECORD:
+		for {
+			if attempts > retries {
+				err := fmt.Errorf(
+					"maximum %v retries exceeded generating record for table %q",
+					retries,
+					f.Table,
+				)
+				return nil, indexed, err
+			}
+
+			record := f.Generator()
+			overrides := toRecord(p, strcase.ToSnake) // todo: recase function should be a config parameter
+			override(record, overrides)
+
+			for i, generation := range g {
+				for j, uniqueBy := range f.UniqueBy {
+
+					key := uniqueBy(record)
+					if _, exists := generation[j][key]; exists {
+						attempts++
+						continue EACH_RECORD
+					}
+					if i == len(g)-1 {
+						indexed[j] = key
+						generation[j][key] = struct{}{}
+					}
+				}
+			}
+
+			records = append(records, record)
+
+			continue EACH_PARTIAL
+		}
+	}
+	return records, indexed, nil
+}
+
+func identifier(name string) string {
+	parts := strings.Split(name, ".")
+	for i, p := range parts {
+		if !strings.HasPrefix(p, "\"") && !strings.HasSuffix(p, "\"") {
+			parts[i] = "\"" + p + "\""
+		}
+	}
+	return strings.Join(parts, ".")
+}
+
+func toRecord(s any, recase func(string) string) Record {
+	v := reflect.Indirect(reflect.ValueOf(s))
+	t := v.Type()
+	r := make(Record, v.NumField())
+	for i := 0; i < v.NumField(); i++ {
+		field := recase(t.Field(i).Name)
+		value := v.Field(i)
+		if isZeroValue(value) {
+			continue
+		}
+		r[field] = value.Interface()
+	}
+	return r
+}
+
+func override(target Record, source Record) {
+	for k := range target {
+		if value, ok := source[k]; ok {
+			target[k] = value
+		}
+	}
+}
+
+func isZeroValue(value reflect.Value) bool {
+	v := value.Interface()
+	z := reflect.Zero(value.Type()).Interface()
+	return reflect.DeepEqual(v, z)
 }

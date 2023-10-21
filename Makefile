@@ -3,8 +3,6 @@ include .env
 MAKEFLAGS += --no-print-directory
 .DEFAULT_GOAL := test
 
-DATABASE_URL := "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable"
-
 .PHONY: migrate admin tdd test cover
 
 migrate:
