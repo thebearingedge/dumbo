@@ -1,6 +1,7 @@
 package dumbo
 
 import (
+	"database/sql"
 	"fmt"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 type User struct {
 	ID       int64
 	Username string
+	IsSilly  sql.NullBool
 }
 
 func TestAddingRecords(t *testing.T) {

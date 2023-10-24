@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/iancoleman/strcase"
 	"github.com/stretchr/testify/require"
@@ -88,17 +89,7 @@ func (d *Dumbo) Insert(t *testing.T, db DB, table string, partials any) {
 	// todo: validate that `partials` is a pointer or slice of pointers
 	// alternatively, there could be some magic for a nicer API, but risky
 
-	ps := make([]any, 0)
-	p := reflect.ValueOf(partials)
-
-	if reflect.Indirect(p).Kind() == reflect.Slice {
-		s := reflect.Indirect(p)
-		for i := 0; i < s.Len(); i++ {
-			ps = append(ps, s.Index(i).Interface())
-		}
-	} else {
-		ps = append(ps, p.Interface())
-	}
+	ps := many(partials)
 
 	records, indexed, err := generate(5 /* todo: parameterize retries */, factory, d.generations[table], ps)
 	t.Cleanup(func() {
@@ -114,12 +105,84 @@ func (d *Dumbo) Insert(t *testing.T, db DB, table string, partials any) {
 
 	for i, r := range inserted {
 		p := reflect.Indirect(reflect.ValueOf(ps[i]))
-		for k, v := range r {
-			vs := p.FieldByName(strcase.ToCamel(k))
-			vm := reflect.ValueOf(v)
-			vs.Set(vm)
+		for recordKey, recordVal := range r {
+			structKey := p.FieldByName(strcase.ToCamel(recordKey))
+			if !structKey.IsValid() {
+				// the target struct does not include this record field k: skipping.
+				// this may be because the table includes a column that is not exposed to the app
+				// todo: validate record fields sooner
+				continue
+			}
+			var structVal any
+			switch structKey.Interface().(type) {
+			case sql.NullString:
+				var s string
+				if recordVal != nil {
+					s = recordVal.(string)
+				}
+				structVal = sql.NullString{String: s, Valid: recordVal != nil}
+			case sql.NullInt64:
+				var i int64
+				if recordVal != nil {
+					i = recordVal.(int64)
+				}
+				structVal = sql.NullInt64{Int64: i, Valid: recordVal != nil}
+			case sql.NullInt32:
+				var i int32
+				if recordVal != nil {
+					i = recordVal.(int32)
+				}
+				structVal = sql.NullInt32{Int32: i, Valid: recordVal != nil}
+			case sql.NullInt16:
+				var i int16
+				if recordVal != nil {
+					i = recordVal.(int16)
+				}
+				structVal = sql.NullInt16{Int16: i, Valid: recordVal != nil}
+			case sql.NullByte:
+				var b byte
+				if recordVal != nil {
+					b = recordVal.(byte)
+				}
+				structVal = sql.NullByte{Byte: b, Valid: recordVal != nil}
+			case sql.NullFloat64:
+				var f float64
+				if recordVal != nil {
+					f = recordVal.(float64)
+				}
+				structVal = sql.NullFloat64{Float64: f, Valid: recordVal != nil}
+			case sql.NullBool:
+				var b bool
+				if recordVal != nil {
+					b = recordVal.(bool)
+				}
+				structVal = sql.NullBool{Bool: b, Valid: recordVal != nil}
+			case sql.NullTime:
+				var t time.Time
+				if recordVal != nil {
+					t = recordVal.(time.Time)
+				}
+				structVal = sql.NullTime{Time: t, Valid: recordVal != nil}
+			default:
+				structVal = recordVal
+			}
+			structKey.Set(reflect.ValueOf(structVal))
 		}
 	}
+}
+
+func many(partials any) []any {
+	ps := make([]any, 0)
+	p := reflect.ValueOf(partials)
+	if reflect.Indirect(p).Kind() == reflect.Slice {
+		s := reflect.Indirect(p)
+		for i := 0; i < s.Len(); i++ {
+			ps = append(ps, s.Index(i).Interface())
+		}
+	} else {
+		ps = append(ps, p.Interface())
+	}
+	return ps
 }
 
 func insert(t *testing.T, db DB, table string, records []Record) []Record {
@@ -247,12 +310,9 @@ func toRecord(s any, recase func(string) string) Record {
 	t := v.Type()
 	r := make(Record, v.NumField())
 	for i := 0; i < v.NumField(); i++ {
-		field := recase(t.Field(i).Name)
+		key := recase(t.Field(i).Name)
 		value := v.Field(i)
-		if isZeroValue(value) {
-			continue
-		}
-		r[field] = value.Interface()
+		r[key] = value.Interface()
 	}
 	return r
 }
@@ -263,10 +323,4 @@ func override(target Record, source Record) {
 			target[k] = value
 		}
 	}
-}
-
-func isZeroValue(value reflect.Value) bool {
-	v := value.Interface()
-	z := reflect.Zero(value.Type()).Interface()
-	return reflect.DeepEqual(v, z)
 }
