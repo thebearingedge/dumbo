@@ -115,43 +115,14 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, record any) {
 
 	i := 0
 	for rows.Next() {
-		require.NoError(t, rows.Scan(outputs[i]...), "scanning row returned from query")
-		i++
-	}
-
-	for i, r := range records {
-		record := reflect.Indirect(reflect.ValueOf(r))
-		for j, f := range sFields {
-			field := record.FieldByName(f)
-			var value any
-			v := reflect.Indirect(reflect.ValueOf(outputs[i][j]))
-			switch field.Interface().(type) {
-			case sql.NullString:
-				var s string
-				valid := !v.IsNil()
-				if valid {
-					s = v.Interface().(string)
-				}
-				value = sql.NullString{String: s, Valid: valid}
-			case sql.NullInt64:
-				var i int64
-				valid := !v.IsNil()
-				if valid {
-					i = v.Interface().(int64)
-				}
-				value = sql.NullInt64{Int64: i, Valid: valid}
-			case sql.NullBool:
-				var b bool
-				valid := !v.IsNil()
-				if valid {
-					b = v.Interface().(bool)
-				}
-				value = sql.NullBool{Bool: b, Valid: valid}
-			default:
-				value = v.Interface()
-			}
-			field.Set(reflect.ValueOf(value))
+		fields := make([]any, 0, len(columns))
+		sValue := reflect.ValueOf(records[i]).Elem()
+		for _, sField := range sFields {
+			sField := sValue.FieldByName(sField).Addr().Interface()
+			fields = append(fields, sField)
 		}
+		require.NoError(t, rows.Scan(fields...), "scanning row returned from query")
+		i++
 	}
 
 	require.NoError(t, rows.Err(), "iterating rows returned from query")
