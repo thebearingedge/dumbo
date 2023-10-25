@@ -57,7 +57,6 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, record any) {
 
 	tuples := make([]string, 0, len(records))
 	inputs := make([]any, 0, len(records)*len(columns))
-	outputs := make([][]any, 0, len(records))
 	param := 1
 
 	for _, p := range records {
@@ -99,7 +98,6 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, record any) {
 			}
 			output = append(output, &value)
 		}
-		outputs = append(outputs, output)
 		inputs = append(inputs, input...)
 		tuples = append(tuples, fmt.Sprintf("(%v)", strings.Join(tuple, ", ")))
 	}
@@ -115,13 +113,13 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, record any) {
 
 	i := 0
 	for rows.Next() {
-		fields := make([]any, 0, len(columns))
+		outputs := make([]any, 0, len(columns))
 		sValue := reflect.ValueOf(records[i]).Elem()
 		for _, sField := range sFields {
 			sField := sValue.FieldByName(sField).Addr().Interface()
-			fields = append(fields, sField)
+			outputs = append(outputs, sField)
 		}
-		require.NoError(t, rows.Scan(fields...), "scanning row returned from query")
+		require.NoError(t, rows.Scan(outputs...), "scanning row returned from query")
 		i++
 	}
 
