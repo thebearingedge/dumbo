@@ -34,18 +34,18 @@ func New(schemas ...Schema) Dumbo {
 	}
 }
 
-func (d Dumbo) Seed(t *testing.T, db DB, table string, partial any) {
+func (d Dumbo) Seed(t *testing.T, db DB, table string, record any) {
 	t.Helper()
 
 	_, err := db.Exec(fmt.Sprintf(`truncate table %q restart identity cascade`, table))
 	require.NoError(t, err, fmt.Sprintf("truncating table %q", table))
 
-	d.Insert(t, db, table, partial)
+	d.Insert(t, db, table, record)
 }
 
-func (d Dumbo) Insert(t *testing.T, db DB, table string, partial any) {
+func (d Dumbo) Insert(t *testing.T, db DB, table string, record any) {
 
-	partials := many(partial)
+	records := many(record)
 	schema := d.schemas[table]
 
 	columns := make([]string, 0, len(schema.Columns))
@@ -55,13 +55,12 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, partial any) {
 		sFields = append(sFields, f)
 	}
 
-	params := make([]string, 0, len(partials)*len(columns))
-	values := make([]any, 0, len(partials)*len(columns))
-	inputs := make([][]any, 0, len(partials))
-	outputs := make([][]any, 0, len(partials))
+	tuples := make([]string, 0, len(records))
+	inputs := make([]any, 0, len(records)*len(columns))
+	outputs := make([][]any, 0, len(records))
 	param := 1
 
-	for _, p := range partials {
+	for _, p := range records {
 		input := make([]any, 0, len(sFields))
 		output := make([]any, 0, len(sFields))
 		tuple := make([]string, 0, len(sFields))
@@ -100,20 +99,19 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, partial any) {
 			}
 			output = append(output, &value)
 		}
-		inputs = append(inputs, input)
 		outputs = append(outputs, output)
-		values = append(values, input...)
-		params = append(params, fmt.Sprintf("(%v)", strings.Join(tuple, ", ")))
+		inputs = append(inputs, input...)
+		tuples = append(tuples, fmt.Sprintf("(%v)", strings.Join(tuple, ", ")))
 	}
 
 	query := fmt.Sprintf(`
 		insert into %v (%v)
 		values %v
 		returning %v
-	`, identifier(table), strings.Join(columns, ", "), strings.Join(params, ", "), strings.Join(columns, ", "))
+	`, identifier(table), strings.Join(columns, ", "), strings.Join(tuples, ", "), strings.Join(columns, ", "))
 
-	rows, err := db.Query(query, values...)
-	require.NoError(t, err, fmt.Sprintf("inserting row(s) into table %v", identifier(table)))
+	rows, err := db.Query(query, inputs...)
+	require.NoError(t, err, fmt.Sprintf("inserting row(s) into table %v with query: \n%v\n", identifier(table), query))
 
 	i := 0
 	for rows.Next() {
@@ -121,8 +119,8 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, partial any) {
 		i++
 	}
 
-	for i, p := range partials {
-		record := reflect.Indirect(reflect.ValueOf(p))
+	for i, r := range records {
+		record := reflect.Indirect(reflect.ValueOf(r))
 		for j, f := range sFields {
 			field := record.FieldByName(f)
 			var value any
@@ -149,6 +147,8 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, partial any) {
 					b = v.Interface().(bool)
 				}
 				value = sql.NullBool{Bool: b, Valid: valid}
+			default:
+				value = v.Interface()
 			}
 			field.Set(reflect.ValueOf(value))
 		}
@@ -157,18 +157,17 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, partial any) {
 	require.NoError(t, rows.Err(), "iterating rows returned from query")
 }
 
-func many(partial any) []any {
-	partials := make([]any, 0)
-	partialValue := reflect.ValueOf(partial)
-	if reflect.Indirect(partialValue).Kind() == reflect.Slice {
-		slice := reflect.Indirect(partialValue)
-		for i := 0; i < slice.Len(); i++ {
-			partials = append(partials, slice.Index(i).Interface())
-		}
-	} else {
-		partials = append(partials, partialValue.Interface())
+func many(record any) []any {
+	value := reflect.ValueOf(record)
+	if reflect.Indirect(value).Kind() != reflect.Slice {
+		return []any{value.Interface()}
 	}
-	return partials
+	slice := reflect.Indirect(value)
+	records := make([]any, 0, slice.Len())
+	for i := 0; i < slice.Len(); i++ {
+		records = append(records, slice.Index(i).Interface())
+	}
+	return records
 }
 
 func identifier(name string) string {
