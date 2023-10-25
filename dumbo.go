@@ -37,8 +37,8 @@ func New(schemas ...Schema) Dumbo {
 func (d Dumbo) Seed(t *testing.T, db DB, table string, record any) {
 	t.Helper()
 
-	_, err := db.Exec(fmt.Sprintf(`truncate table %q restart identity cascade`, table))
-	require.NoError(t, err, fmt.Sprintf("truncating table %q", table))
+	_, err := db.Exec(fmt.Sprintf(`truncate table %v restart identity cascade`, identifier(table)))
+	require.NoError(t, err, fmt.Sprintf("truncating table %v", identifier(table)))
 
 	d.Insert(t, db, table, record)
 }
