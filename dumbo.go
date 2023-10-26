@@ -37,20 +37,6 @@ func New(schemas ...Schema) Dumbo {
 	}
 }
 
-func (d Dumbo) SeedFile(t *testing.T, db DB, path string) {
-	t.Helper()
-
-	_, caller, _, _ := runtime.Caller(1)
-	script, pathErr := filepath.Abs(filepath.Join(filepath.Dir(caller), path))
-	require.NoError(t, pathErr)
-
-	sql, readErr := os.ReadFile(script)
-	require.NoError(t, readErr)
-
-	_, execErr := db.Exec(string(sql))
-	require.NoError(t, execErr)
-}
-
 func (d Dumbo) Seed(t *testing.T, db DB, table string, record any) {
 	t.Helper()
 
@@ -205,4 +191,45 @@ func identifier(name string) string {
 		}
 	}
 	return strings.Join(parts, ".")
+}
+
+func RequireDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	require.NoError(t, err)
+	return db
+}
+
+func RequireBegin(t *testing.T, db *sql.DB) *sql.Tx {
+	t.Helper()
+	tx, err := db.Begin()
+	t.Cleanup(func() { require.NoError(t, tx.Rollback()) })
+	require.NoError(t, err)
+	return tx
+}
+
+func RequireSavepoint(t *testing.T, tx *sql.Tx) *sql.Tx {
+	t.Helper()
+	_, err := tx.Exec(fmt.Sprintf("savepoint %q", t.Name()))
+	t.Cleanup(func() {
+		_, err := tx.Exec(fmt.Sprintf("rollback to savepoint %q", t.Name()))
+		require.NoError(t, err)
+	})
+	require.NoError(t, err)
+	return tx
+}
+
+func RequireSeed(t *testing.T, db DB, path string) {
+	t.Helper()
+
+	_, caller, _, _ := runtime.Caller(1)
+	script, pathErr := filepath.Abs(filepath.Join(filepath.Dir(caller), path))
+	require.NoError(t, pathErr)
+
+	sql, readErr := os.ReadFile(script)
+	require.NoError(t, readErr)
+
+	_, execErr := db.Exec(string(sql))
+	require.NoError(t, execErr)
 }

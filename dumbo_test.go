@@ -4,9 +4,8 @@ import (
 	"database/sql"
 	"testing"
 
+	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
-
-	"github.com/thebearingedge/dumbo/internal/dumbotest"
 )
 
 type User struct {
@@ -30,10 +29,10 @@ func TestSeedingRecords(t *testing.T) {
 		},
 	})
 
-	db := dumbotest.RequireDB(t)
+	db := RequireDB(t)
 
 	t.Run("seeding a single record", func(t *testing.T) {
-		tx := dumbotest.RequireBegin(t, db)
+		tx := RequireBegin(t, db)
 
 		user := &User{
 			Username: sql.NullString{String: "gopher", Valid: true},
@@ -51,7 +50,7 @@ func TestSeedingRecords(t *testing.T) {
 	})
 
 	t.Run("seeding multiple records", func(t *testing.T) {
-		tx := dumbotest.RequireBegin(t, db)
+		tx := RequireBegin(t, db)
 
 		users := []*User{
 			{
@@ -85,14 +84,13 @@ func TestSeedingRecords(t *testing.T) {
 }
 
 func TestSeedingScripts(t *testing.T) {
-	d := New()
 
-	db := dumbotest.RequireDB(t)
+	db := RequireDB(t)
 
 	t.Run("seeding from a script file", func(t *testing.T) {
-		tx := dumbotest.RequireBegin(t, db)
+		tx := RequireBegin(t, db)
 
-		d.SeedFile(t, tx, "./scripts/insert_users.sql")
+		RequireSeed(t, tx, "./scripts/insert_users.sql")
 
 		query := `
 			select
