@@ -3,7 +3,10 @@ package dumbo
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -34,6 +37,20 @@ func New(schemas ...Schema) Dumbo {
 	}
 }
 
+func (d Dumbo) SeedFile(t *testing.T, db DB, path string) {
+	t.Helper()
+
+	_, caller, _, _ := runtime.Caller(1)
+	script, pathErr := filepath.Abs(filepath.Join(filepath.Dir(caller), path))
+	require.NoError(t, pathErr)
+
+	sql, readErr := os.ReadFile(script)
+	require.NoError(t, readErr)
+
+	_, execErr := db.Exec(string(sql))
+	require.NoError(t, execErr)
+}
+
 func (d Dumbo) Seed(t *testing.T, db DB, table string, record any) {
 	t.Helper()
 
@@ -44,6 +61,7 @@ func (d Dumbo) Seed(t *testing.T, db DB, table string, record any) {
 }
 
 func (d Dumbo) Insert(t *testing.T, db DB, table string, record any) {
+	t.Helper()
 
 	records := many(record)
 	schema := d.schemas[table]
