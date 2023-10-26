@@ -85,8 +85,40 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, record any) {
 		for _, f := range sFields {
 			var value any = sValue.FieldByName(f).Interface()
 			switch value.(type) {
-			case sql.NullString:
-				if !value.(sql.NullString).Valid {
+			case sql.NullBool:
+				if !value.(sql.NullBool).Valid {
+					tuple = append(tuple, "default")
+				} else {
+					input = append(input, value)
+					tuple = append(tuple, fmt.Sprintf("$%d", param))
+					param++
+				}
+			case sql.NullByte:
+				if !value.(sql.NullByte).Valid {
+					tuple = append(tuple, "default")
+				} else {
+					input = append(input, value)
+					tuple = append(tuple, fmt.Sprintf("$%d", param))
+					param++
+				}
+			case sql.NullFloat64:
+				if !value.(sql.NullFloat64).Valid {
+					tuple = append(tuple, "default")
+				} else {
+					input = append(input, value)
+					tuple = append(tuple, fmt.Sprintf("$%d", param))
+					param++
+				}
+			case sql.NullInt16:
+				if !value.(sql.NullInt16).Valid {
+					tuple = append(tuple, "default")
+				} else {
+					input = append(input, value)
+					tuple = append(tuple, fmt.Sprintf("$%d", param))
+					param++
+				}
+			case sql.NullInt32:
+				if !value.(sql.NullInt32).Valid {
 					tuple = append(tuple, "default")
 				} else {
 					input = append(input, value)
@@ -101,8 +133,16 @@ func (d Dumbo) Insert(t *testing.T, db DB, table string, record any) {
 					tuple = append(tuple, fmt.Sprintf("$%d", param))
 					param++
 				}
-			case sql.NullBool:
-				if !value.(sql.NullBool).Valid {
+			case sql.NullString:
+				if !value.(sql.NullString).Valid {
+					tuple = append(tuple, "default")
+				} else {
+					input = append(input, value)
+					tuple = append(tuple, fmt.Sprintf("$%d", param))
+					param++
+				}
+			case sql.NullTime:
+				if !value.(sql.NullTime).Valid {
 					tuple = append(tuple, "default")
 				} else {
 					input = append(input, value)
