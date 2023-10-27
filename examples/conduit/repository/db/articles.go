@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -18,21 +19,15 @@ func NewArticlesRepository(service service.DB) *ArticlesRepository {
 	return &ArticlesRepository{service: service}
 }
 
-func (r ArticlesRepository) Publish(n schema.NewArticle) (*schema.Article, error) {
+func (r *ArticlesRepository) Publish(n schema.NewArticle) (*schema.Article, error) {
 
-	sql := `
+	query := `
 		with inserted_article as (
 		  insert into articles (author_id, slug, title, description, body)
 		  values ($1, $2, $3, $4, $5)
 		      on conflict (slug) do nothing
 		  returning id,
-		            slug,
-		            title,
-		            description,
-		            body,
-		            created_at,
-		            updated_at,
-		            author_id
+		            slug
 		), upserted_tags as (
 		  insert into tags (name)
 		  select unnest($6::text[])
@@ -58,209 +53,74 @@ func (r ArticlesRepository) Publish(n schema.NewArticle) (*schema.Article, error
 		  returning article_id,
 		            tag_id
 		)
-		select ia.slug,
-		       ia.title,
-		       ia.description,
-		       ia.body,
-		       array_agg(at.name) filter (where at.name is not null) tag_list,
-		       ia.created_at,
-		       ia.updated_at,
-		       json_build_object(
-		         'username',  u.username,
-		         'bio',       u.bio,
-		         'image',     u.image_url,
-		         'following', f.following_id is not null
-		       ) author
-		  from inserted_article ia
-		  join users u
-		    on ia.author_id = u.id
-		  left join inserted_article_tags iat
-		    on ia.id = iat.article_id
-		  left join applied_tags at
-		    on iat.tag_id = at.id
-		  left join followers f
-		    on ia.author_id = f.following_id and u.id = f.follower_id
-		 group by ia.slug,
-		          ia.title,
-		          ia.description,
-		          ia.body,
-		          ia.created_at,
-		          ia.updated_at,
-		          u.username,
-		          u.bio,
-		          u.image_url,
-		          f.following_id
+		select slug
+		  from inserted_article
 	`
 
-	rows, err := r.service.Query(sql, n.AuthorID, n.Slug, n.Title, n.Description, n.Body, pq.Array(n.TagList))
-	if err != nil {
-		return nil, fmt.Errorf(`inserting new article: %w`, err)
-	}
-	defer rows.Close()
+	row := r.service.QueryRow(query, n.AuthorID, n.Slug, n.Title, n.Description, n.Body, pq.Array(n.TagList))
 
-	if !rows.Next() {
-		return nil, nil
-	}
-
-	a := schema.Article{}
-	if err := rows.Scan(&a.Slug, &a.Title, &a.Description, &a.Body, pq.Array(&a.TagList), &a.CreatedAt, &a.UpdatedAt, &a.Author); err != nil {
+	var slug string
+	if err := row.Scan(&slug); err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf(`scanning published article: %w`, err)
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf(`iterating article results: %w`, err)
-	}
-
-	return &a, nil
+	return r.FindBySlug(slug)
 }
 
-func (r ArticlesRepository) PartialUpdate(p schema.ArticlePatch) (*schema.Article, error) {
+func (r *ArticlesRepository) PartialUpdate(p schema.ArticlePatch) (*schema.Article, error) {
 
-	sql := `
-		with updated_article as (
-		  update articles
-		     set slug        = coalesce($3, slug),
-		         title       = coalesce($4, title),
-		         description = coalesce($5, description),
-		         body        = coalesce($6, body)
-		   where id        = $1
-		     and author_id = $2
-		     and (
-		           $3::text is null or not exists (
-		             select 1
-		               from articles
-		              where id   != $1
-		                and slug  = $3::text
-		           )
-		     )
-		  returning id,
-		            slug,
-		            title,
-		            description,
-		            body,
-		            created_at,
-		            updated_at,
-		            author_id
-		)
-		select ua.slug,
-		       ua.title,
-		       ua.description,
-		       ua.body,
-		       array_agg(t.name) filter (where t.name is not null) tag_list,
-		       ua.created_at,
-		       ua.updated_at,
-		       json_build_object(
-		         'username',  u.username,
-		         'bio',       u.bio,
-		         'image',     u.image_url,
-		         'following', f.following_id is not null
-		       ) author
-		  from updated_article ua
-		  join users u
-		    on ua.author_id = u.id
-		  left join article_tags at
-		    on ua.id = at.article_id
-		  left join tags t
-		    on at.tag_id = t.id
-		  left join followers f
-		    on ua.author_id = f.following_id and u.id = f.follower_id
-		 group by ua.slug,
-		          ua.title,
-		          ua.description,
-		          ua.body,
-		          ua.created_at,
-		          ua.updated_at,
-		          u.username,
-		          u.bio,
-		          u.image_url,
-		          f.following_id
+	query := `
+		update articles
+		   set slug        = coalesce($3, slug),
+		       title       = coalesce($4, title),
+		       description = coalesce($5, description),
+		       body        = coalesce($6, body)
+		 where id        = $1
+		   and author_id = $2
+		   and (
+		         $3::text is null or not exists (
+		           select 1
+		             from articles
+		            where id   != $1
+		              and slug  = $3::text
+		         )
+		   )
+		returning slug
 	`
 
-	rows, err := r.service.Query(sql, p.ID, p.AuthorID, p.Slug, p.Title, p.Description, p.Body)
-	if err != nil {
-		return nil, fmt.Errorf(`updating article: %w`, err)
-	}
-	defer rows.Close()
+	row := r.service.QueryRow(query, p.ID, p.AuthorID, p.Slug, p.Title, p.Description, p.Body)
 
-	if !rows.Next() {
+	var slug string
+	if err := row.Scan(&slug); err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf(`scanning published article: %w`, err)
+	}
+
+	return r.FindBySlug(slug)
+}
+
+func (r *ArticlesRepository) FindBySlug(slug string) (*schema.Article, error) {
+	if strings.TrimSpace(slug) == "" {
 		return nil, nil
 	}
 
-	a := schema.Article{}
-	if err := rows.Scan(&a.Slug, &a.Title, &a.Description, &a.Body, pq.Array(&a.TagList), &a.CreatedAt, &a.UpdatedAt, &a.Author); err != nil {
-		return nil, fmt.Errorf(`scanning updated article: %w`, err)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf(`iterating article results: %w`, err)
-	}
-
-	return &a, nil
-}
-
-func (r ArticlesRepository) FindBySlug(slug string) (*schema.Article, error) {
-
-	sql := `
-		select a.slug,
-		       a.title,
-		       a.description,
-		       a.body,
-		       array_agg(t.name) filter (where t.name is not null) tag_list,
-		       a.created_at,
-		       a.updated_at,
-		       json_build_object(
-		         'username',  u.username,
-		         'bio',       u.bio,
-		         'image',     u.image_url,
-		         'following', f.following_id is not null
-		       ) author
-		  from articles a
-		  join users u
-		    on a.author_id = u.id
-		  left join article_tags at
-		    on a.id = at.article_id
-		  left join tags t
-		    on at.tag_id = t.id
-		  left join followers f
-		    on a.author_id = f.following_id and u.id = f.follower_id
-		 where a.slug = $1
-		 group by a.slug,
-		          a.title,
-		          a.description,
-		          a.body,
-		          a.created_at,
-		          a.updated_at,
-		          u.username,
-		          u.bio,
-		          u.image_url,
-		          f.following_id
-	`
-
-	rows, err := r.service.Query(sql, slug)
+	list, err := r.List(ArticlesFilter{
+		Slug:  slug,
+		Limit: 1,
+	})
 	if err != nil {
-		return nil, fmt.Errorf(`updating article: %w`, err)
+		return nil, err
 	}
-	defer rows.Close()
 
-	if !rows.Next() {
+	if list.ArticlesCount == 0 {
 		return nil, nil
 	}
 
-	a := schema.Article{}
-	if err := rows.Scan(&a.Slug, &a.Title, &a.Description, &a.Body, pq.Array(&a.TagList), &a.CreatedAt, &a.UpdatedAt, &a.Author); err != nil {
-		return nil, fmt.Errorf(`scanning updated article: %w`, err)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf(`iterating article results: %w`, err)
-	}
-
-	return &a, nil
+	return &list.Articles[0], nil
 }
 
-func (r ArticlesRepository) List(f ArticlesFilter) (*schema.ArticleList, error) {
+func (r *ArticlesRepository) List(f ArticlesFilter) (*schema.ArticleList, error) {
 
-	sql := `
+	query := `
 		select a.slug,
 		       a.title,
 		       a.description,
@@ -290,6 +150,7 @@ func (r ArticlesRepository) List(f ArticlesFilter) (*schema.ArticleList, error) 
 		 where ($1::text[] is null or t.name = any($1::text[]))
 		   and ($2 = '' or u.username = $2)
 		   and ($3 = '' or fu.username = $3)
+		   and ($4 = '' or a.slug = $4)
 		 group by a.id,
 		          a.slug,
 		          a.title,
@@ -302,15 +163,16 @@ func (r ArticlesRepository) List(f ArticlesFilter) (*schema.ArticleList, error) 
 		          u.image_url,
 		          fo.following_id
 		 order by a.id desc
-		 limit case when $4 = 0 then 20 else $4 end
-		 offset $5
+		 limit case when $5 = 0 then 20 else $5 end
+		 offset $6
 	`
 
 	rows, err := r.service.Query(
-		sql,
+		query,
 		pq.Array(f.Tags),
 		f.Author,
 		f.Favorited,
+		f.Slug,
 		f.Limit,
 		f.Offset,
 	)
@@ -322,9 +184,21 @@ func (r ArticlesRepository) List(f ArticlesFilter) (*schema.ArticleList, error) 
 	articles := make([]schema.Article, 0)
 	for rows.Next() {
 		a := schema.Article{}
-		if err := rows.Scan(&a.Slug, &a.Title, &a.Description, &a.Body, pq.Array(&a.TagList), &a.CreatedAt, &a.UpdatedAt, &a.Author); err != nil {
+
+		err := rows.Scan(
+			&a.Slug,
+			&a.Title,
+			&a.Description,
+			&a.Body,
+			pq.Array(&a.TagList),
+			&a.CreatedAt,
+			&a.UpdatedAt,
+			&a.Author,
+		)
+		if err != nil {
 			return nil, fmt.Errorf(`scanning article: %w`, err)
 		}
+
 		articles = append(articles, a)
 	}
 
@@ -337,7 +211,7 @@ func (r ArticlesRepository) List(f ArticlesFilter) (*schema.ArticleList, error) 
 	return &list, nil
 }
 
-func (r ArticlesRepository) DeleteBySlug(authorID uint64, slug string) (int64, error) {
+func (r *ArticlesRepository) DeleteBySlug(authorID uint64, slug string) (int64, error) {
 	if strings.TrimSpace(slug) == "" {
 		return 0, nil
 	}

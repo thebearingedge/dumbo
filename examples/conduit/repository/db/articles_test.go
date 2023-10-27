@@ -11,8 +11,6 @@ import (
 )
 
 func TestPublishArticle(t *testing.T) {
-	t.Parallel()
-
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 
@@ -20,7 +18,9 @@ func TestPublishArticle(t *testing.T) {
 		truncate table "users" restart identity cascade;
 
 		insert into "users" ("username", "email", "password")
-		values ('gopher', 'gopher@google.com', 'this should be hashed')
+		values ('gopher', 'gopher@google.com', 'this should be hashed');
+
+		truncate table "articles" restart identity cascade;
 	`)
 
 	const userID = uint64(1)
@@ -40,6 +40,7 @@ func TestPublishArticle(t *testing.T) {
 		})
 
 		assert.NoError(t, err)
+		assert.NotNil(t, published)
 		assert.Equal(t, "postgres-is-the-best", published.Slug)
 		assert.Equal(t, "Postgres is the best", published.Title)
 		assert.Equal(t, "it's obvious", published.Description)
@@ -53,10 +54,11 @@ func TestPublishArticle(t *testing.T) {
 	})
 
 	t.Run("does not save duplicate articles", func(t *testing.T) {
+		sp := dbtest.RequireSavepoint(t, tx)
 
-		articles := NewArticlesRepository(tx)
+		articles := NewArticlesRepository(sp)
 
-		_, _ = articles.Publish(schema.NewArticle{
+		_, err := articles.Publish(schema.NewArticle{
 			AuthorID:    userID,
 			Slug:        "postgres-is-the-best",
 			Title:       "Postgres is the best",
@@ -64,6 +66,8 @@ func TestPublishArticle(t *testing.T) {
 			Body:        "blah",
 			TagList:     []string{"sql", "databases"},
 		})
+
+		t.Log(err)
 
 		unpublished, err := articles.Publish(schema.NewArticle{
 			AuthorID:    userID,
@@ -80,8 +84,6 @@ func TestPublishArticle(t *testing.T) {
 }
 
 func TestUpdateArticle(t *testing.T) {
-	t.Parallel()
-
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 
@@ -194,8 +196,6 @@ func TestUpdateArticle(t *testing.T) {
 }
 
 func TestFindArticleBySlug(t *testing.T) {
-	t.Parallel()
-
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 
@@ -229,8 +229,6 @@ func TestFindArticleBySlug(t *testing.T) {
 }
 
 func TestListArticlesReverseChronological(t *testing.T) {
-	t.Parallel()
-
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 
@@ -310,8 +308,6 @@ func TestListArticlesReverseChronological(t *testing.T) {
 }
 
 func TestDeleteArticleBySlug(t *testing.T) {
-	t.Parallel()
-
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 

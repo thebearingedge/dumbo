@@ -14,7 +14,7 @@ import (
 	"github.com/thebearingedge/dumbo/examples/conduit/infrastructure/db"
 )
 
-type DB interface {
+type service interface {
 	Exec(string, ...any) (sql.Result, error)
 	Query(string, ...any) (*sql.Rows, error)
 }
@@ -24,7 +24,7 @@ type Tx struct {
 }
 
 func (t *Tx) Commit() error {
-	_, err := t.Tx.Exec(`savepoint "committed"`)
+	_, err := t.Exec(`savepoint "committed"`)
 	return err
 }
 
@@ -77,7 +77,7 @@ func identifier(name string) string {
 	return strings.Join(parts, ".")
 }
 
-func RequireTruncate(t *testing.T, db DB, tables ...string) {
+func RequireTruncate(t *testing.T, db service, tables ...string) {
 	t.Helper()
 
 	names := make([]string, 0, len(tables))
@@ -89,7 +89,7 @@ func RequireTruncate(t *testing.T, db DB, tables ...string) {
 	require.NoError(t, err)
 }
 
-func RequireScript(t *testing.T, db DB, scriptPath string) {
+func RequireScript(t *testing.T, db service, scriptPath string) {
 	t.Helper()
 
 	_, caller, _, _ := runtime.Caller(1)
@@ -105,14 +105,14 @@ func RequireScript(t *testing.T, db DB, scriptPath string) {
 	require.NoError(t, execErr)
 }
 
-func RequireExec(t *testing.T, db DB, query string) {
+func RequireExec(t *testing.T, db service, query string) {
 	t.Helper()
 
 	_, err := db.Exec(query)
 	require.NoError(t, err)
 }
 
-func RequireRows(t *testing.T, db DB, query string) []map[string]any {
+func RequireRows(t *testing.T, db service, query string) []map[string]any {
 	t.Helper()
 
 	rows, err := db.Query(query)
