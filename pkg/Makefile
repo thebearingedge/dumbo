@@ -12,7 +12,7 @@ admin:
 	docker compose up --detach admin
 
 tdd:
-	DATABASE_URL=$(DATABASE_URL) gow -c test
+	DATABASE_URL=$(DATABASE_URL) gow -c test ./...
 
 test:
 	DATABASE_URL=$(DATABASE_URL) go test -count=1 -v
