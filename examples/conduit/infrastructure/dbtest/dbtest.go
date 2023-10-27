@@ -31,9 +31,11 @@ func (t *Tx) Commit() error {
 func RequireDB(t *testing.T) *db.DB {
 	t.Helper()
 
-	t.Log(os.Getenv("DATABASE_URL"))
 	pool, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	require.NoError(t, err)
+
+	pool.SetMaxIdleConns(1)
+	pool.SetMaxOpenConns(1)
 
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
 

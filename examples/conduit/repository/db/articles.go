@@ -129,8 +129,8 @@ func (r ArticlesRepository) PartialUpdate(p schema.ArticlePatch) (*schema.Articl
 		           $3::text is null or not exists (
 		             select 1
 		               from articles
-		              where id   = $1
-		                and slug = $3::text
+		              where id   != $1
+		                and slug  = $3::text
 		           )
 		     )
 		  returning id,

@@ -11,6 +11,8 @@ import (
 )
 
 func TestPublishArticle(t *testing.T) {
+	t.Parallel()
+
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 
@@ -78,6 +80,8 @@ func TestPublishArticle(t *testing.T) {
 }
 
 func TestUpdateArticle(t *testing.T) {
+	t.Parallel()
+
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 
@@ -137,18 +141,19 @@ func TestUpdateArticle(t *testing.T) {
 	})
 
 	t.Run("skips duplicate slugs", func(t *testing.T) {
-		t.Skip() // this is wrong
 		sp := dbtest.RequireSavepoint(t, tx)
 
 		dbtest.RequireExec(t, sp, `
 			truncate table "articles" restart identity cascade;
 
 			insert into "articles" ("author_id", "slug", "title", "description", "body")
-			values (1, 'postgres-is-the-best', 'Postgres is the Best', 'it''s obvious', 'blah');
+			values
+				(1, 'postgres-is-the-best', 'Postgres is the Best', 'it''s obvious', 'blah'),
+				(1, 'postgres-is-the-worst', 'Postgres is the Worst', 'it''s obvious', 'blah');
 		`)
 
 		const userID = uint64(1)
-		const articleID = uint64(1)
+		const articleID = uint64(2)
 
 		articles := NewArticlesRepository(sp)
 		unpatched, err := articles.PartialUpdate(schema.ArticlePatch{
@@ -160,9 +165,37 @@ func TestUpdateArticle(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Nil(t, unpatched)
 	})
+
+	t.Run("skips update targeted slugs", func(t *testing.T) {
+		sp := dbtest.RequireSavepoint(t, tx)
+
+		dbtest.RequireExec(t, sp, `
+			truncate table "articles" restart identity cascade;
+
+			insert into "articles" ("author_id", "slug", "title", "description", "body")
+			values
+				(1, 'postgres-is-the-best', 'Postgres is the Best', 'it''s obvious', 'blah'),
+				(1, 'postgres-is-the-worst', 'Postgres is the Worst', 'it''s obvious', 'blah');
+		`)
+
+		const userID = uint64(1)
+		const articleID = uint64(1)
+
+		articles := NewArticlesRepository(sp)
+		patched, err := articles.PartialUpdate(schema.ArticlePatch{
+			ID:       articleID,
+			AuthorID: userID,
+			Slug:     sql.NullString{String: "postgres-is-mid", Valid: true},
+		})
+
+		assert.NoError(t, err)
+		assert.NotNil(t, patched)
+	})
 }
 
 func TestFindArticleBySlug(t *testing.T) {
+	t.Parallel()
+
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 
@@ -196,6 +229,8 @@ func TestFindArticleBySlug(t *testing.T) {
 }
 
 func TestListArticlesReverseChronological(t *testing.T) {
+	t.Parallel()
+
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 
@@ -275,6 +310,8 @@ func TestListArticlesReverseChronological(t *testing.T) {
 }
 
 func TestDeleteArticleBySlug(t *testing.T) {
+	t.Parallel()
+
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 
