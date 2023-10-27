@@ -117,7 +117,7 @@ func TestFindByID(t *testing.T) {
 	db := dbtest.RequireDB(t)
 	tx := dbtest.RequireBegin(t, db)
 
-	const id = uint64(1)
+	const userID = uint64(1)
 
 	dbtest.RequireExec(t, tx, `
 		truncate table "users" restart identity cascade;
@@ -131,7 +131,7 @@ func TestFindByID(t *testing.T) {
 
 		users := NewUsersRepository(sp)
 
-		found, err := users.FindByID(id)
+		found, err := users.FindByID(userID)
 
 		assert.NoError(t, err)
 		assert.NotNil(t, found)
@@ -144,7 +144,7 @@ func TestFindByID(t *testing.T) {
 
 		users := NewUsersRepository(sp)
 
-		notFound, err := users.FindByID(id + 1)
+		notFound, err := users.FindByID(userID + 1)
 
 		assert.NoError(t, err)
 		assert.Nil(t, notFound)

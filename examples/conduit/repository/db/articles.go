@@ -337,7 +337,7 @@ func (r ArticlesRepository) List(f ArticlesFilter) (*schema.ArticleList, error) 
 	return &list, nil
 }
 
-func (r ArticlesRepository) DeleteBySlug(authorID int64, slug string) (int64, error) {
+func (r ArticlesRepository) DeleteBySlug(authorID uint64, slug string) (int64, error) {
 	if strings.TrimSpace(slug) == "" {
 		return 0, nil
 	}

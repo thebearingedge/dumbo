@@ -24,7 +24,7 @@ type Tx struct {
 }
 
 func (t *Tx) Commit() error {
-	_, err := t.Tx.Exec(`savepoint "commited"`)
+	_, err := t.Tx.Exec(`savepoint "committed"`)
 	return err
 }
 
@@ -98,4 +98,37 @@ func RequireExec(t *testing.T, db DB, query string) {
 
 	_, err := db.Exec(query)
 	require.NoError(t, err)
+}
+
+func RequireRows(t *testing.T, db DB, query string) []map[string]any {
+	t.Helper()
+
+	rows, err := db.Query(query)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	require.NoError(t, err)
+
+	fetched := make([]map[string]any, 0)
+
+	for rows.Next() {
+		fields := make([]any, len(columns))
+		for i := range fields {
+			fields[i] = &fields[i]
+		}
+
+		require.NoError(t, rows.Scan(fields...))
+
+		record := make(map[string]any, len(columns))
+		for i, column := range columns {
+			record[column] = fields[i]
+		}
+
+		fetched = append(fetched, record)
+	}
+
+	require.NoError(t, rows.Err())
+
+	return fetched
 }
