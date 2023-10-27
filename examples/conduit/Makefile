@@ -12,13 +12,13 @@ admin:
 	docker compose up --detach admin
 
 tdd:
-	DATABASE_URL=$(DATABASE_URL) gow -c test ./...
+	DATABASE_URL=$(DATABASE_URL) gow -c test -count=1 ./...
 
 test:
-	DATABASE_URL=$(DATABASE_URL) go test -count=1 -v
+	DATABASE_URL=$(DATABASE_URL) go test -count=1 -v ./...
 
 cover:
-	DATABASE_URL=$(DATABASE_URL) go test -count=1 -v -coverprofile .coverage/conduit.out
+	DATABASE_URL=$(DATABASE_URL) go test -count=1 -v -coverprofile .coverage/conduit.out ./...
 	go tool cover -html=.coverage/conduit.out -o .coverage/conduit.html
 
 stop:

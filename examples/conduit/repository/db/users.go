@@ -3,15 +3,15 @@ package repository
 import (
 	"fmt"
 
-	"github.com/thebearingedge/dumbo/examples/conduit/infrastructure/db"
 	"github.com/thebearingedge/dumbo/examples/conduit/infrastructure/db/schema"
+	"github.com/thebearingedge/dumbo/examples/conduit/repository/service"
 )
 
 type UsersRepository struct {
-	db *db.DB
+	db service.DB
 }
 
-func NewUsersRepository(db *db.DB) UsersRepository {
+func NewUsersRepository(db service.DB) UsersRepository {
 	return UsersRepository{db: db}
 }
 

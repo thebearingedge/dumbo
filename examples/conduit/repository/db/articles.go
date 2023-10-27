@@ -6,15 +6,15 @@ import (
 
 	"github.com/lib/pq"
 
-	"github.com/thebearingedge/dumbo/examples/conduit/infrastructure/db"
 	"github.com/thebearingedge/dumbo/examples/conduit/infrastructure/db/schema"
+	"github.com/thebearingedge/dumbo/examples/conduit/repository/service"
 )
 
 type ArticlesRepository struct {
-	service *db.DB
+	service service.DB
 }
 
-func NewArticlesRepository(service *db.DB) *ArticlesRepository {
+func NewArticlesRepository(service service.DB) *ArticlesRepository {
 	return &ArticlesRepository{service: service}
 }
 
