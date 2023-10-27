@@ -1,4 +1,4 @@
-package conduittest
+package dbtest
 
 import (
 	"database/sql"
@@ -19,6 +19,15 @@ type DB interface {
 	Query(string, ...any) (*sql.Rows, error)
 }
 
+type Tx struct {
+	*db.Tx
+}
+
+func (t *Tx) Commit() error {
+	_, err := t.Tx.Exec(`savepoint "commited"`)
+	return err
+}
+
 func RequireDB(t *testing.T) *db.DB {
 	t.Helper()
 
@@ -31,7 +40,7 @@ func RequireDB(t *testing.T) *db.DB {
 	return &db.DB{DB: pool}
 }
 
-func RequireBegin(t *testing.T, db *db.DB) *db.Tx {
+func RequireBegin(t *testing.T, db *db.DB) *Tx {
 	t.Helper()
 
 	tx, err := db.Begin()
@@ -39,10 +48,10 @@ func RequireBegin(t *testing.T, db *db.DB) *db.Tx {
 
 	t.Cleanup(func() { require.NoError(t, tx.Rollback()) })
 
-	return tx
+	return &Tx{Tx: tx}
 }
 
-func RequireSavepoint(t *testing.T, tx *db.Tx) *db.Tx {
+func RequireSavepoint(t *testing.T, tx *Tx) *Tx {
 	t.Helper()
 
 	_, err := tx.Exec(fmt.Sprintf("savepoint %q", t.Name()))
