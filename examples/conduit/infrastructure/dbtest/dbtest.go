@@ -54,15 +54,25 @@ func RequireBegin(t *testing.T, db *db.DB) *Tx {
 func RequireSavepoint(t *testing.T, tx *Tx) *Tx {
 	t.Helper()
 
-	_, err := tx.Exec(fmt.Sprintf("savepoint %q", t.Name()))
+	_, err := tx.Exec(fmt.Sprintf("savepoint %v", identifier(t.Name())))
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		_, err := tx.Exec(fmt.Sprintf("rollback to savepoint %q", t.Name()))
+		_, err := tx.Exec(fmt.Sprintf("rollback to savepoint %v", identifier(t.Name())))
 		require.NoError(t, err)
 	})
 
 	return tx
+}
+
+func identifier(name string) string {
+	parts := strings.Split(name, ".")
+	for i, p := range parts {
+		if !strings.HasPrefix(p, "\"") && !strings.HasSuffix(p, "\"") {
+			parts[i] = "\"" + p + "\""
+		}
+	}
+	return strings.Join(parts, ".")
 }
 
 func RequireTruncate(t *testing.T, db DB, tables ...string) {
@@ -70,7 +80,7 @@ func RequireTruncate(t *testing.T, db DB, tables ...string) {
 
 	names := make([]string, 0, len(tables))
 	for _, name := range tables {
-		names = append(names, fmt.Sprintf("%q", name))
+		names = append(names, identifier(name))
 	}
 
 	_, err := db.Exec(fmt.Sprintf(`truncate table %v restart identity cascade`, strings.Join(names, ", ")))
